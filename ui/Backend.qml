@@ -44,10 +44,11 @@ Singleton {
 
     signal toast(string text)
 
-    function cycleAccount() {
+    function cycleAccount(d) {
         if (workspaces.length < 2) return
+        const n = workspaces.length
         const i = workspaces.findIndex(w => w.id === currentAccount)
-        selectAccount(workspaces[(i + 1) % workspaces.length].id)
+        selectAccount(workspaces[(i + (d || 1) + n) % n].id)
     }
 
     function safeWrite(s) { if (sock.connected) sock.write(s) }

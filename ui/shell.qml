@@ -118,11 +118,17 @@ FloatingWindow {
             const ctrl = e.modifiers & Qt.ControlModifier
             const inConv = Backend.openConvId !== ""
 
+            // account switch: Ctrl+Shift+L/H next/prev (before the pane-focus
+            // matches below, which would otherwise swallow Ctrl+H/L with shift)
+            if (ctrl && (e.modifiers & Qt.ShiftModifier) && (e.key === Qt.Key_L || e.key === Qt.Key_H)) {
+                Backend.cycleAccount(e.key === Qt.Key_L ? 1 : -1)
+                e.accepted = true; return
+            }
             // pane focus
             if (ctrl && e.key === Qt.Key_H) { win.pane = "sidebar"; e.accepted = true; return }
             if (ctrl && e.key === Qt.Key_L) { win.pane = "index"; e.accepted = true; return }
-            // account switch (cycles; tabs in the sidebar header are clickable too)
-            if (ctrl && e.key === Qt.Key_S) { Backend.cycleAccount(); e.accepted = true; return }
+            // account switch (cycle; tabs in the sidebar header are clickable too)
+            if (ctrl && e.key === Qt.Key_S) { Backend.cycleAccount(1); e.accepted = true; return }
             // half-page
             if (ctrl && (e.key === Qt.Key_D || e.key === Qt.Key_U)) {
                 const d = e.key === Qt.Key_D ? 1 : -1

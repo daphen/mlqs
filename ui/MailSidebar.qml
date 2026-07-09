@@ -203,6 +203,9 @@ Rectangle {
             // inbox unread is the "loud" count (filled accent pill, like
             // mentions/DMs in chat); other folders stay quiet muted numbers
             readonly property bool loudUnread: modelData.unread > 0 && modelData.role === "inbox"
+            // junk-folder unreads don't deserve emphasis — spam/trash stay muted
+            readonly property bool emphasize: modelData.unread > 0
+                && modelData.role !== "spam" && modelData.role !== "trash"
 
             Rectangle {
                 anchors.fill: parent
@@ -254,7 +257,7 @@ Rectangle {
                         anchors.fill: gImg; source: gImg
                         colorization: 1
                         colorizationColor: row.primary ? Theme.bg
-                             : (modelData.unread > 0 || row.isOpen || row.cursor) ? Theme.fg : Theme.fg_muted
+                             : (row.emphasize || row.isOpen || row.cursor) ? Theme.fg : Theme.fg_muted
                     }
                 }
                 Text {
@@ -265,10 +268,10 @@ Rectangle {
                         : (modelData.name.charAt(0) + modelData.name.slice(1).toLowerCase())
                     elide: Text.ElideRight
                     color: row.primary ? Theme.bg
-                         : (modelData.unread > 0 || row.isOpen || row.cursor) ? Theme.fg : Theme.dimmedFg
+                         : (row.emphasize || row.isOpen || row.cursor) ? Theme.fg : Theme.dimmedFg
                     font.family: Theme.fontFamily; font.hintingPreference: Font.PreferNoHinting
                     font.pixelSize: 14
-                    font.weight: modelData.unread > 0 ? 500 : Theme.fontWeight
+                    font.weight: row.emphasize ? 500 : Theme.fontWeight
                 }
             }
 

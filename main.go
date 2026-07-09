@@ -130,7 +130,7 @@ func (d *daemon) serve(conn net.Conn) {
 		switch cmd.Type {
 		case "ping":
 			d.sendTo(conn, map[string]any{"type": "pong"})
-		case "folders", "conversations", "conversation", "openhtml", "search", "threads", "markread", "star", "archive", "trash", "send":
+		case "folders", "conversations", "conversation", "openhtml", "openatt", "search", "threads", "markread", "star", "archive", "trash", "send":
 			go d.handle(conn, cmd)
 		default:
 			d.sendTo(conn, map[string]any{"type": "toast",
@@ -307,6 +307,30 @@ func (d *daemon) handle(conn net.Conn, cmd command) {
 		}
 		d.sendTo(conn, map[string]any{"type": "conversations", "account": cmd.Account,
 			"folder": "__threads", "items": items, "next": ""})
+	case "openatt":
+		// open an attachment: cid images are already in imgcache; anything
+		// else downloads to the files cache. cmd.ID=message, Text=attachment
+		if p := imgcache.Lookup(imgcache.Key("cid:" + cmd.ID + ":" + cmd.Query)); p != "" && cmd.Query != "" {
+			exec.Command("xdg-open", p).Start()
+			return
+		}
+		data, err := p.FetchAttachment(ctx, cmd.ID, cmd.Text)
+		if err != nil {
+			fail(err)
+			return
+		}
+		dir := filepath.Join(os.Getenv("HOME"), ".cache", "mlqs", "files")
+		os.MkdirAll(dir, 0o700)
+		name := cmd.Folder
+		if name == "" {
+			name = "attachment"
+		}
+		path := filepath.Join(dir, imgcache.Key(cmd.ID+cmd.Text)[:12]+"-"+filepath.Base(name))
+		if err := os.WriteFile(path, data, 0o600); err != nil {
+			fail(err)
+			return
+		}
+		exec.Command("xdg-open", path).Start()
 	case "search":
 		pg, err := p.Search(ctx, cmd.Query, 50)
 		if err != nil {

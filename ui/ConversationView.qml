@@ -340,9 +340,12 @@ Rectangle {
                     Repeater {
                         model: modelData.attachments || []
                         Rectangle {
+                            id: attChip
                             required property var modelData
+                            readonly property string msgId: parent.parent.parent.modelData.id
                             width: chipText.implicitWidth + 20; height: 22
-                            radius: 11; color: Theme.surface2
+                            radius: 11
+                            color: chipHov.hovered ? Theme.surface3 : Theme.surface2
                             Text {
                                 id: chipText
                                 renderType: Text.NativeRendering
@@ -351,6 +354,8 @@ Rectangle {
                                 color: Theme.fg_secondary
                                 font.family: Theme.fontFamily; font.pixelSize: 11
                             }
+                            HoverHandler { id: chipHov; cursorShape: Qt.PointingHandCursor }
+                            TapHandler { onTapped: Backend.openAttachment(attChip.msgId, attChip.modelData) }
                         }
                     }
                 }

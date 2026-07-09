@@ -145,6 +145,12 @@ Singleton {
         if (openConvId === id) closeConv()
     }
 
+    function openAttachment(msgId, att) {
+        if (!att) return
+        send({ type: "openatt", account: currentAccount, id: msgId,
+               text: att.id || "", query: att.contentId || "", folder: att.name || "" })
+    }
+
     function openHtml(msgId) {
         send({ type: "openhtml", account: currentAccount, id: openConvId, text: msgId })
     }

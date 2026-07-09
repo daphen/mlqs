@@ -16,22 +16,27 @@ Rectangle {
         spam: "󱚝", trash: "󰩺", label: "󰓹"
     })
 
+    // labels are clutter by default; the section header toggles
+    property bool labelsCollapsed: true
+    readonly property var visibleFolders: labelsCollapsed
+        ? Backend.folders.filter(f => f.section !== "labels") : Backend.folders
+
     // sel === -1 is the pinned Threads row (chat parity: virtual top item)
     function move(d) {
-        if (Backend.folders.length === 0) return
-        sel = Math.max(-1, Math.min(Backend.folders.length - 1, sel + d))
+        if (visibleFolders.length === 0) return
+        sel = Math.max(-1, Math.min(visibleFolders.length - 1, sel + d))
         if (sel >= 0) list.positionViewAtIndex(sel, ListView.Contain)
     }
     function choose() {
         if (sel === -1) { Backend.selectThreads(); return }
-        const f = Backend.folders[sel]
+        const f = visibleFolders[sel]
         if (f) Backend.selectFolder(f.id, f.name)
     }
     Connections {
         target: Backend
         function onCurrentFolderIdChanged() {
             if (Backend.currentFolderId === "__threads") { bar.sel = -1; return }
-            const i = Backend.folders.findIndex(f => f.id === Backend.currentFolderId)
+            const i = bar.visibleFolders.findIndex(f => f.id === Backend.currentFolderId)
             if (i >= 0) bar.sel = i
         }
     }
@@ -137,7 +142,7 @@ Rectangle {
     ListView {
         id: list
         anchors { top: threadsRow.bottom; topMargin: 2; left: parent.left; right: parent.right; bottom: parent.bottom }
-        model: Backend.folders
+        model: bar.visibleFolders
         clip: true
         boundsBehavior: Flickable.StopAtBounds
 
@@ -150,11 +155,36 @@ Rectangle {
                 renderType: Text.NativeRendering
                 anchors.left: parent.left; anchors.leftMargin: 12
                 anchors.bottom: parent.bottom; anchors.bottomMargin: 8
-                text: section.toUpperCase()
+                text: section.toUpperCase() + (section === "labels" ? "  ▾" : "")
                 color: Theme.fg_muted; font.family: Theme.fontFamily
                 font.hintingPreference: Font.PreferNoHinting
                 font.pixelSize: 11; font.weight: 500; font.letterSpacing: 1.2
             }
+            TapHandler {
+                enabled: section === "labels"
+                onTapped: bar.labelsCollapsed = true
+            }
+        }
+
+        // collapsed stub: click to expand; shows the labels' pooled unread
+        footer: Item {
+            visible: bar.labelsCollapsed
+            width: list.width
+            height: bar.labelsCollapsed ? 34 : 0
+            Text {
+                renderType: Text.NativeRendering
+                anchors.left: parent.left; anchors.leftMargin: 12
+                anchors.bottom: parent.bottom; anchors.bottomMargin: 8
+                text: {
+                    let n = 0
+                    for (const f of Backend.folders) if (f.section === "labels") n += f.unread || 0
+                    return "LABELS  ▸" + (n > 0 ? "  · " + n : "")
+                }
+                color: Theme.fg_muted; font.family: Theme.fontFamily
+                font.hintingPreference: Font.PreferNoHinting
+                font.pixelSize: 11; font.weight: 500; font.letterSpacing: 1.2
+            }
+            TapHandler { onTapped: bar.labelsCollapsed = false }
         }
 
         delegate: Item {

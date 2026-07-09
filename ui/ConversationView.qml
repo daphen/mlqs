@@ -41,6 +41,26 @@ Rectangle {
 
     readonly property var _hintRe: /<a\s[^>]*href="([^"]+)"[^>]*>|<img\s[^>]*src="(file:[^"]+)"[^>]*\/?>/gi
 
+    property string hintBaseHtml: ""
+
+    // OS badge language: filled accent chip with ink text (the unread-pill /
+    // clipboard-category look), not brackets. Dim chips that can no longer
+    // match the typed prefix — layout stays stable, matches pop.
+    function _badge(label, dim) {
+        const bg = dim ? Theme.surface3 : Theme.cursor
+        const fg = dim ? Theme.fg_muted : Theme.ink
+        return '<span style="background-color:' + bg + ';color:' + fg
+             + ';font-weight:700;font-size:11px;">&nbsp;' + label + '&nbsp;</span>&#8202;'
+    }
+    function _renderHints() {
+        let k = 0
+        _hintRe.lastIndex = 0
+        hintedHtml = hintBaseHtml.replace(_hintRe, tag => {
+            const lab = hintLabels[k++]
+            const dim = hintBuf !== "" && lab.indexOf(hintBuf) !== 0
+            return _badge(lab, dim) + tag
+        })
+    }
     function startHints() {
         const m = Backend.messages[list.currentIndex]
         if (!m) return
@@ -59,12 +79,9 @@ Rectangle {
                 for (let j = 0; j < A.length && labels.length < targets.length; j++)
                     labels.push(A[i] + A[j])
         }
-        let k = 0
-        _hintRe.lastIndex = 0
-        hintedHtml = html.replace(_hintRe, tag =>
-            '<font color="' + Theme.cursor + '"><b>[' + labels[k++] + ']</b></font>' + tag)
-        hintTargets = targets; hintLabels = labels
+        hintTargets = targets; hintLabels = labels; hintBaseHtml = html
         hintIndex = list.currentIndex; hintBuf = ""; hinting = true
+        _renderHints()
     }
     function cancelHints() { hinting = false; hintBuf = ""; hintIndex = -1 }
     function hintKey(ch) {
@@ -76,8 +93,10 @@ Rectangle {
             Qt.openUrlExternally(url)
             return
         }
-        if (hintLabels.some(l => l.indexOf(buf) === 0)) hintBuf = buf
-        else cancelHints()
+        if (hintLabels.some(l => l.indexOf(buf) === 0)) {
+            hintBuf = buf
+            _renderHints()
+        } else cancelHints()
     }
     Connections {
         target: Backend

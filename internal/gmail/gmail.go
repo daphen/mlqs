@@ -339,10 +339,13 @@ func (c *Client) GetConversationMeta(ctx context.Context, id string) (provider.C
 	return c.threadMeta(ctx, id)
 }
 
-func (c *Client) ListConversations(ctx context.Context, folderID, cursor string, limit int) (provider.Page, error) {
+func (c *Client) ListConversations(ctx context.Context, folderID, cursor string, limit int, unreadOnly bool) (provider.Page, error) {
 	q := url.Values{"labelIds": {folderID}}
 	if cursor != "" {
 		q.Set("pageToken", cursor)
+	}
+	if unreadOnly {
+		q.Set("q", "is:unread")
 	}
 	return c.threadPage(ctx, q, limit)
 }

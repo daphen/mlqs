@@ -88,7 +88,7 @@ type Draft struct {
 
 type Provider interface {
 	ListFolders(ctx context.Context) ([]Folder, error)
-	ListConversations(ctx context.Context, folderID, cursor string, limit int) (Page, error)
+	ListConversations(ctx context.Context, folderID, cursor string, limit int, unreadOnly bool) (Page, error)
 	GetConversation(ctx context.Context, id string) ([]Message, error)
 	GetConversationMeta(ctx context.Context, id string) (Conversation, error)
 	FetchAttachment(ctx context.Context, messageID, attachmentID string) ([]byte, error)

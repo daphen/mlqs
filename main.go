@@ -94,6 +94,7 @@ type command struct {
 	Cursor  string   `json:"cursor"`
 	Text    string   `json:"text"`
 	Query   string   `json:"query"`
+	Unread  bool     `json:"unread"`
 	To      string   `json:"to"`
 	Cc      string   `json:"cc"`
 	Bcc     string   `json:"bcc"`
@@ -163,13 +164,13 @@ func (d *daemon) handle(conn net.Conn, cmd command) {
 		}
 		d.sendTo(conn, map[string]any{"type": "folders", "account": cmd.Account, "folders": fs})
 	case "conversations":
-		pg, err := p.ListConversations(ctx, cmd.Folder, cmd.Cursor, 50)
+		pg, err := p.ListConversations(ctx, cmd.Folder, cmd.Cursor, 50, cmd.Unread)
 		if err != nil {
 			fail(err)
 			return
 		}
 		d.sendTo(conn, map[string]any{"type": "conversations", "account": cmd.Account,
-			"folder": cmd.Folder, "items": pg.Conversations, "next": pg.NextCursor})
+			"folder": cmd.Folder, "items": pg.Conversations, "next": pg.NextCursor, "unread": cmd.Unread})
 	case "conversation":
 		msgs, err := p.GetConversation(ctx, cmd.ID)
 		if err != nil {

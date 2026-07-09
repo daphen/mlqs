@@ -32,19 +32,27 @@ Singleton {
         send({ type: "folders", account: id })
     }
 
+    // u: server-side unread-only filter, so it pages over ALL unreads
+    property bool unreadOnly: false
+
     function selectFolder(id, name) {
         currentFolderId = id; currentFolderName = name || id
         convs = []; nextCursor = ""; pendingCursor = ""
         openConvId = ""; messages = []
         loadingConvs = true
-        send({ type: "conversations", account: currentAccount, folder: id })
+        send({ type: "conversations", account: currentAccount, folder: id, unread: unreadOnly })
+    }
+
+    function toggleUnreadFilter() {
+        unreadOnly = !unreadOnly
+        if (currentFolderId !== "") selectFolder(currentFolderId, currentFolderName)
     }
 
     function loadMore() {
         if (nextCursor === "" || loadingConvs) return
         pendingCursor = nextCursor
         loadingConvs = true
-        send({ type: "conversations", account: currentAccount, folder: currentFolderId, cursor: nextCursor })
+        send({ type: "conversations", account: currentAccount, folder: currentFolderId, cursor: nextCursor, unread: unreadOnly })
     }
 
     function openConv(c) {
@@ -59,10 +67,19 @@ Singleton {
         }
     }
 
-    function markLocalRead(id) {
-        convs = convs.map(x => x.id === id ? Object.assign({}, x, { unread: false }) : x)
+    function setLocalRead(id, read) {
+        convs = convs.map(x => x.id === id ? Object.assign({}, x, { unread: !read }) : x)
         folders = folders.map(f => f.id === currentFolderId
-            ? Object.assign({}, f, { unread: Math.max(0, (f.unread || 0) - 1) }) : f)
+            ? Object.assign({}, f, { unread: Math.max(0, (f.unread || 0) + (read ? -1 : 1)) }) : f)
+    }
+    function markLocalRead(id) { setLocalRead(id, true) }
+
+    // R in the index: flip a thread's read state (server + local)
+    function toggleRead(c) {
+        if (!c || !c.id) return
+        const read = !!c.unread   // unread → mark read; read → mark unread
+        send({ type: "markread", account: currentAccount, id: c.id, text: read ? "true" : "false" })
+        setLocalRead(c.id, read)
     }
 
     function closeConv() { openConvId = ""; messages = [] }
@@ -154,6 +171,8 @@ Singleton {
         } else if (e.type === "conversations") {
             loadingConvs = false
             if (e.account !== currentAccount) return
+            // a response from the other filter mode (fast u-toggling) is stale
+            if (!!e.unread !== unreadOnly && e.folder === currentFolderId) return
             const items = e.items || []
             if (pendingCursor !== "") { convs = convs.concat(items); pendingCursor = "" }
             else convs = items
@@ -164,6 +183,7 @@ Singleton {
             if (e.account !== currentAccount || !e.conv) return
             const c = e.conv
             const inFolder = currentFolderId !== "" && (c.folderIds || []).indexOf(currentFolderId) >= 0
+                && (!unreadOnly || c.unread)
             let list = convs.filter(x => x.id !== c.id)
             if (inFolder) {
                 // keep the index date-sorted; new mail lands at the top

@@ -199,7 +199,11 @@ FloatingWindow {
                 break
             case Qt.Key_R:
                 if (inConv) composer.reply(!!(e.modifiers & Qt.ShiftModifier))
+                else if (e.modifiers & Qt.ShiftModifier) Backend.toggleRead(index.current())
                 else Backend.refresh()
+                break
+            case Qt.Key_U:
+                if (!inConv && win.pane === "index") Backend.toggleUnreadFilter()
                 break
             case Qt.Key_Slash:
                 searchBox.open()

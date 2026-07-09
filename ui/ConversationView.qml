@@ -161,16 +161,17 @@ Rectangle {
             height: content.height + 24
             color: "transparent"
 
-            // picker highlighting system: the focused message gets the
-            // selection fill + hairline, everything else stays transparent
+            // picker cursor: fg tint + hairpin ring on the one focused
+            // message (Theme.selection is near-invisible on the bg panel)
             readonly property bool multi: Backend.messages.length > 1
+            readonly property bool focusedMsg: multi && index === list.currentIndex
             Rectangle {
                 anchors.fill: parent
                 anchors.leftMargin: 10; anchors.rightMargin: 10
                 radius: Theme.radius
-                color: parent.multi && index === list.currentIndex ? Theme.selection : "transparent"
+                color: parent.focusedMsg ? Qt.rgba(Theme.fg.r, Theme.fg.g, Theme.fg.b, 0.08) : "transparent"
                 border.width: 1
-                border.color: parent.multi && index === list.currentIndex ? Theme.hairline : "transparent"
+                border.color: parent.focusedMsg ? Theme.hairline : "transparent"
             }
 
             Column {

@@ -132,7 +132,7 @@ func (d *daemon) serve(conn net.Conn) {
 		switch cmd.Type {
 		case "ping":
 			d.sendTo(conn, map[string]any{"type": "pong"})
-		case "folders", "conversations", "conversation", "openhtml", "openatt", "search", "threads", "markread", "star", "archive", "trash", "send":
+		case "folders", "conversations", "conversation", "openhtml", "openatt", "search", "threads", "markread", "star", "archive", "unarchive", "trash", "untrash", "send":
 			go d.handle(conn, cmd)
 		default:
 			d.sendTo(conn, map[string]any{"type": "toast",
@@ -380,6 +380,14 @@ func (d *daemon) handle(conn net.Conn, cmd command) {
 		}
 	case "trash":
 		if err := p.Trash(ctx, cmd.ID); err != nil {
+			fail(err)
+		}
+	case "untrash":
+		if err := p.Untrash(ctx, cmd.ID); err != nil {
+			fail(err)
+		}
+	case "unarchive":
+		if err := p.Unarchive(ctx, cmd.ID); err != nil {
 			fail(err)
 		}
 	case "send":

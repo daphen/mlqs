@@ -129,14 +129,44 @@ Singleton {
         if (i >= 0) convsModel.setProperty(i, "starred", v)
     }
 
+    // one-level undo for destructive moves (u) — Gmail restores server-side
+    property var lastRemoved: null
+
+    function _rememberRemoved(kind, id) {
+        const i = findRow(id)
+        if (i < 0) { lastRemoved = null; return }
+        const r = convsModel.get(i)
+        lastRemoved = { kind: kind, idx: i, account: currentAccount, folderId: currentFolderId,
+                        row: { tid: r.tid, subject: r.subject, snippet: r.snippet, who: r.who,
+                               dateStr: r.dateStr, dateMs: r.dateMs, unread: r.unread, starred: r.starred } }
+    }
+
     function archiveConv(id) {
+        _rememberRemoved("archive", id)
         send({ type: "archive", account: currentAccount, id: id })
         removeLocal(id)
+        if (lastRemoved) toast("archived — u undoes")
     }
 
     function trashConv(id) {
+        _rememberRemoved("trash", id)
         send({ type: "trash", account: currentAccount, id: id })
         removeLocal(id)
+        if (lastRemoved) toast("trashed — u undoes")
+    }
+
+    function undoRemove() {
+        const lr = lastRemoved
+        if (!lr) { toast("nothing to undo"); return }
+        lastRemoved = null
+        send({ type: lr.kind === "trash" ? "untrash" : "unarchive", account: lr.account, id: lr.row.tid })
+        if (lr.account === currentAccount && lr.folderId === currentFolderId) {
+            convsModel.insert(Math.min(lr.idx, convsModel.count), lr.row)
+            if (lr.row.unread)
+                folders = folders.map(f => f.id === currentFolderId
+                    ? Object.assign({}, f, { unread: (f.unread || 0) + 1 }) : f)
+        }
+        toast(lr.kind === "trash" ? "restored from trash" : "restored to inbox")
     }
 
     function removeLocal(id) {

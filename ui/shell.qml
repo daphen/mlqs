@@ -194,6 +194,9 @@ FloatingWindow {
             StatusCap { text: "e" }
             CapLabel { text: "archive" }
             CapGap {}
+            StatusCap { text: "u" }
+            CapLabel { text: "undo" }
+            CapGap {}
             StatusCap { text: "/" }
             CapLabel { text: "search" }
         }
@@ -342,6 +345,9 @@ FloatingWindow {
                 break
             case Qt.Key_Q:
                 if (inConv) Backend.closeConv()
+                break
+            case Qt.Key_U:
+                if (!inConv) Backend.undoRemove()
                 break
             case Qt.Key_F:
                 if (inConv) conv.startHints()

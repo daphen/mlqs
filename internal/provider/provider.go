@@ -100,6 +100,8 @@ type Provider interface {
 	MarkRead(ctx context.Context, convID string, read bool) error
 	Star(ctx context.Context, convID string, starred bool) error
 	Archive(ctx context.Context, convID string) error
+	Unarchive(ctx context.Context, convID string) error
 	Trash(ctx context.Context, convID string) error
+	Untrash(ctx context.Context, convID string) error
 	Search(ctx context.Context, q string, limit int) (Page, error)
 }

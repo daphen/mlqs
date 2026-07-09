@@ -551,8 +551,16 @@ func (c *Client) Archive(ctx context.Context, convID string) error {
 	return c.modify(ctx, convID, nil, []string{"INBOX"})
 }
 
+func (c *Client) Unarchive(ctx context.Context, convID string) error {
+	return c.modify(ctx, convID, []string{"INBOX"}, nil)
+}
+
 func (c *Client) Trash(ctx context.Context, convID string) error {
 	return c.post(ctx, "/threads/"+convID+"/trash", nil, nil)
+}
+
+func (c *Client) Untrash(ctx context.Context, convID string) error {
+	return c.post(ctx, "/threads/"+convID+"/untrash", nil, nil)
 }
 
 // ---- send ----

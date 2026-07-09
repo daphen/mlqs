@@ -132,7 +132,7 @@ func (d *daemon) serve(conn net.Conn) {
 		switch cmd.Type {
 		case "ping":
 			d.sendTo(conn, map[string]any{"type": "pong"})
-		case "folders", "conversations", "conversation", "openhtml", "openatt", "search", "threads", "markread", "star", "archive", "unarchive", "trash", "untrash", "send":
+		case "folders", "conversations", "conversation", "openhtml", "openatt", "search", "threads", "contacts", "markread", "star", "archive", "unarchive", "trash", "untrash", "send":
 			go d.handle(conn, cmd)
 		default:
 			d.sendTo(conn, map[string]any{"type": "toast",
@@ -229,6 +229,13 @@ func (d *daemon) handle(conn net.Conn, cmd command) {
 		if err != nil {
 			fail(err)
 			return
+		}
+		now := time.Now().Unix()
+		for _, m := range msgs {
+			d.db.UpsertContact(cmd.Account, m.From.Email, m.From.Name, now)
+			for _, a := range append(append([]provider.Address{}, m.To...), m.Cc...) {
+				d.db.UpsertContact(cmd.Account, a.Email, a.Name, now)
+			}
 		}
 		out := make([]map[string]any, 0, len(msgs))
 		for _, m := range msgs {
@@ -371,6 +378,10 @@ func (d *daemon) handle(conn net.Conn, cmd command) {
 			return
 		}
 		openMedia(path)
+	case "contacts":
+		items := d.db.QueryContacts(cmd.Account, cmd.Query, 8)
+		d.sendTo(conn, map[string]any{"type": "contacts", "account": cmd.Account,
+			"query": cmd.Query, "items": items})
 	case "search":
 		pg, err := p.Search(ctx, cmd.Query, 50)
 		if err != nil {

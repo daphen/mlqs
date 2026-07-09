@@ -40,6 +40,10 @@ CREATE TABLE IF NOT EXISTS messages(
 	body_text TEXT, body_html TEXT, attachments_json TEXT,
 	PRIMARY KEY(account, id));
 CREATE INDEX IF NOT EXISTS msg_conv ON messages(account, conv_id);
+CREATE TABLE IF NOT EXISTS contacts(
+	account TEXT, email TEXT, name TEXT,
+	seen INT DEFAULT 0, last INT DEFAULT 0,
+	PRIMARY KEY(account, email));
 CREATE TABLE IF NOT EXISTS sync_state(
 	account TEXT PRIMARY KEY, delta_token TEXT, synced_at INT);
 `
@@ -71,4 +75,38 @@ func (d *DB) SetDeltaToken(account, token string, syncedAt int64) error {
 		ON CONFLICT(account) DO UPDATE SET delta_token=excluded.delta_token, synced_at=excluded.synced_at`,
 		account, token, syncedAt)
 	return err
+}
+
+func (d *DB) UpsertContact(account, email, name string, ts int64) {
+	if email == "" {
+		return
+	}
+	d.Exec(`INSERT INTO contacts(account, email, name, seen, last) VALUES(?,?,?,1,?)
+		ON CONFLICT(account, email) DO UPDATE SET
+		seen = seen + 1, last = excluded.last,
+		name = CASE WHEN excluded.name != '' THEN excluded.name ELSE name END`,
+		account, email, name, ts)
+}
+
+type Contact struct {
+	Email string `json:"email"`
+	Name  string `json:"name"`
+}
+
+func (d *DB) QueryContacts(account, prefix string, limit int) []Contact {
+	rows, err := d.Query(`SELECT email, name FROM contacts
+		WHERE account = ? AND (email LIKE ? OR name LIKE ?)
+		ORDER BY seen DESC, last DESC LIMIT ?`,
+		account, prefix+"%", "%"+prefix+"%", limit)
+	if err != nil {
+		return nil
+	}
+	defer rows.Close()
+	var out []Contact
+	for rows.Next() {
+		var c Contact
+		rows.Scan(&c.Email, &c.Name)
+		out = append(out, c)
+	}
+	return out
 }

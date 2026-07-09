@@ -16,6 +16,12 @@ Rectangle {
     border.width: 1
     border.color: Qt.rgba(Theme.fg.r, Theme.fg.g, Theme.fg.b, Theme.mode === "light" ? 0.15 : 0.10)
 
+    property int sel: 0   // 0 to · 1 cc · 2 subject · 3 body
+    readonly property bool editing: toField.input.activeFocus || ccField.input.activeFocus
+                                    || subjField.input.activeFocus || bodyArea.activeFocus
+    function focusSel() {
+        [toField.input, ccField.input, subjField.input, bodyArea][sel].forceActiveFocus()
+    }
     property string mode: "new"      // "new" | "reply"
     property string replyToId: ""
     property string convId: ""
@@ -25,8 +31,9 @@ Rectangle {
     function composeNew() {
         mode = "new"; replyToId = ""; convId = ""; paths = []
         toField.text = ""; ccField.text = ""; subjField.text = ""; bodyArea.text = ""
+        sel = 0
         visible = true
-        toField.forceActiveFocus()
+        toField.input.forceActiveFocus()
     }
 
     // reply to the newest message; all=true adds every recipient minus self
@@ -47,6 +54,7 @@ Rectangle {
         const subj = m.subject || Backend.openConvSubject
         subjField.text = subj.match(/^re:/i) ? subj : "Re: " + subj
         bodyArea.text = ""
+        sel = 3
         visible = true
         bodyArea.forceActiveFocus()
     }
@@ -79,7 +87,7 @@ Rectangle {
     // shared keys for every field in the composer
     function handleKeys(e) {
         const ctrl = e.modifiers & Qt.ControlModifier
-        if (e.key === Qt.Key_Escape) { close(); e.accepted = true; return true }
+        if (e.key === Qt.Key_Escape) { compKeys.forceActiveFocus(); e.accepted = true; return true }
         if (ctrl && (e.key === Qt.Key_Return || e.key === Qt.Key_Enter)) { doSend(); e.accepted = true; return true }
         if (ctrl && e.key === Qt.Key_O) { attachClipboardPath(); e.accepted = true; return true }
         return false
@@ -89,10 +97,13 @@ Rectangle {
         property alias text: input.text
         property alias input: input
         property string label: ""
+        property int idx: 0
         width: parent.width; height: 34
         radius: Theme.radiusSm
         color: Theme.mode === "light" ? Theme.bg : Theme.surface2
-        border.width: 1; border.color: Theme.hairline
+        border.width: 1
+        border.color: input.activeFocus ? (Theme.mode === "light" ? Theme.fg : "#FFFFFF")
+                    : (comp.sel === idx && !comp.editing) ? Theme.fg_muted : Theme.hairline
         Row {
             anchors.fill: parent; anchors.leftMargin: 10
             spacing: 8
@@ -127,16 +138,18 @@ Rectangle {
             font.family: Theme.fontFamily; font.pixelSize: 14; font.weight: 600
         }
 
-        LabeledField { id: toField; label: "To" }
-        LabeledField { id: ccField; label: "Cc" }
-        LabeledField { id: subjField; label: "Subject" }
+        LabeledField { id: toField; label: "To"; idx: 0 }
+        LabeledField { id: ccField; label: "Cc"; idx: 1 }
+        LabeledField { id: subjField; label: "Subject"; idx: 2 }
 
         Rectangle {
             width: parent.width
-            height: parent.height - y - (attachRow.visible ? 34 : 0) - 30
+            height: parent.height - y - (attachRow.visible ? 34 : 0) - 34
             radius: Theme.radiusSm
             color: Theme.mode === "light" ? Theme.bg : Theme.surface1
-            border.color: bodyArea.activeFocus ? Theme.fg_muted : Theme.hairline; border.width: 1
+            border.width: 1
+            border.color: bodyArea.activeFocus ? (Theme.mode === "light" ? Theme.fg : "#FFFFFF")
+                        : (comp.sel === 3 && !comp.editing) ? Theme.fg_muted : Theme.hairline
             Flickable {
                 id: bodyFlick
                 anchors.fill: parent; anchors.margins: 10
@@ -183,11 +196,65 @@ Rectangle {
             }
         }
 
-        Text {
-            renderType: Text.NativeRendering
-            text: "Ctrl+Enter send · Esc discard · Ctrl+O attach clipboard path"
-            color: Theme.fg_muted
-            font.family: Theme.fontFamily; font.pixelSize: 11
+    }
+
+    Item {
+        id: compKeys
+        anchors.fill: parent
+        focus: comp.visible && !comp.editing
+        Keys.onPressed: e => {
+            const ctrl = e.modifiers & Qt.ControlModifier
+            if (ctrl && (e.key === Qt.Key_Return || e.key === Qt.Key_Enter)) { comp.doSend(); e.accepted = true; return }
+            if (ctrl && e.key === Qt.Key_O) { comp.attachClipboardPath(); e.accepted = true; return }
+            switch (e.key) {
+            case Qt.Key_J: comp.sel = Math.min(3, comp.sel + 1); break
+            case Qt.Key_K: comp.sel = Math.max(0, comp.sel - 1); break
+            case Qt.Key_I:
+            case Qt.Key_Return:
+            case Qt.Key_Enter: comp.focusSel(); break
+            case Qt.Key_Escape:
+            case Qt.Key_Q: comp.close(); break
+            default: return
+            }
+            e.accepted = true
+        }
+    }
+
+    // picker chin: same band + keycap grammar as every other picker
+    Rectangle {
+        anchors { left: parent.left; right: parent.right; bottom: parent.bottom }
+        height: 34; color: Theme.surface0
+        radius: Theme.radius
+        Rectangle { anchors.top: parent.top; width: parent.width; height: 1; color: Theme.hairline }
+        Row {
+            anchors.right: parent.right; anchors.rightMargin: 14
+            anchors.verticalCenter: parent.verticalCenter
+            spacing: 6
+            component CCap: Rectangle {
+                property alias text: t.text
+                width: Math.max(t.implicitWidth + 12, 22); height: 22; radius: 7
+                anchors.verticalCenter: parent.verticalCenter
+                color: Theme.mode === "light" ? Theme.bg : Theme.surface2
+                border.width: 1; border.color: Theme.hairline
+                Text { id: t; renderType: Text.NativeRendering; anchors.centerIn: parent
+                       color: Qt.tint(Theme.fg_muted, Qt.rgba(Theme.fg.r, Theme.fg.g, Theme.fg.b, 0.55))
+                       font.family: Theme.fontFamily; font.pixelSize: 11; font.weight: 500 }
+            }
+            component CLbl: Text {
+                renderType: Text.NativeRendering
+                anchors.verticalCenter: parent.verticalCenter
+                color: Qt.tint(Theme.fg_muted, Qt.rgba(Theme.fg.r, Theme.fg.g, Theme.fg.b, 0.55))
+                font.family: Theme.fontFamily; font.pixelSize: 11
+            }
+            CCap { text: "j" } CCap { text: "k" } CLbl { text: "field" }
+            Item { width: 8; height: 1 }
+            CCap { text: "i" } CLbl { text: "edit" }
+            Item { width: 8; height: 1 }
+            CCap { text: "⌃↵" } CLbl { text: "send" }
+            Item { width: 8; height: 1 }
+            CCap { text: "⌃o" } CLbl { text: "attach" }
+            Item { width: 8; height: 1 }
+            CCap { text: "esc" } CLbl { text: "close" }
         }
     }
 }

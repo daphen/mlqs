@@ -113,22 +113,39 @@ FloatingWindow {
         onClosed: keys.forceActiveFocus()
     }
 
-    // toast
+    // feedback pill — the chat clients' "Opening media…" badge, family spec:
+    // inverted ink chip, hairline ring, pulsing accent dot
     Rectangle {
         id: toast
+        z: 201
         visible: opacity > 0
         opacity: 0
         anchors.horizontalCenter: parent.horizontalCenter
-        anchors.bottom: parent.bottom; anchors.bottomMargin: 24
-        width: toastText.implicitWidth + 28; height: 34
-        radius: Theme.radius; color: Theme.overlay
-        border.color: Theme.hairline; border.width: 1
-        Behavior on opacity { NumberAnimation { duration: 150 } }
-        Text {
-            id: toastText
-            renderType: Text.NativeRendering
-            anchors.centerIn: parent
-            color: Theme.fg; font.family: Theme.fontFamily; font.pixelSize: 12
+        anchors.bottom: statusbar.top; anchors.bottomMargin: 8
+        width: tRow.implicitWidth + 28; height: 32; radius: 8
+        color: Theme.mode === "light" ? Theme.ink : Theme.fg
+        border.width: 1; border.color: Theme.hairline
+        Behavior on opacity { NumberAnimation { duration: 140 } }
+        Row {
+            id: tRow
+            anchors.centerIn: parent; spacing: 8
+            Rectangle {
+                width: 8; height: 8; radius: 4; color: Theme.cursor
+                anchors.verticalCenter: parent.verticalCenter
+                SequentialAnimation on opacity {
+                    running: toast.visible; loops: Animation.Infinite
+                    NumberAnimation { from: 1; to: 0.25; duration: 550 }
+                    NumberAnimation { from: 0.25; to: 1; duration: 550 }
+                }
+            }
+            Text {
+                id: toastText
+                renderType: Text.NativeRendering
+                anchors.verticalCenter: parent.verticalCenter
+                color: Theme.bg
+                font.family: Theme.fontFamily; font.hintingPreference: Font.PreferNoHinting
+                font.pixelSize: 13
+            }
         }
         Timer { id: toastHide; interval: 3000; onTriggered: toast.opacity = 0 }
         Connections {

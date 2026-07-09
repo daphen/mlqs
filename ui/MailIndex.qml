@@ -28,7 +28,9 @@ Rectangle {
     Rectangle {
         id: header
         anchors { top: parent.top; left: parent.left; right: parent.right }
-        height: 40; color: Theme.bg
+        // 52px to match the sidebar's account-tab band — the hairline must
+        // run continuously across both panels
+        height: 52; color: Theme.bg
         Text {
             renderType: Text.NativeRendering
             anchors.left: parent.left; anchors.leftMargin: 14

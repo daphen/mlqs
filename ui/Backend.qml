@@ -265,6 +265,10 @@ Singleton {
             const i = findRow(e.id)
             if (i >= 0) convsModel.remove(i)
             if (openConvId === e.id) closeConv()
+        } else if (e.type === "openconv") {
+            // notification deep-link: land on the conversation itself
+            if (e.account !== currentAccount) selectAccount(e.account)
+            openConv({ tid: e.id, subject: e.subject || "", unread: false })
         } else if (e.type === "sent") {
             toast("sent ✓")
         } else if (e.type === "toast") {

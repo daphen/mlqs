@@ -30,6 +30,7 @@ import (
 	"mlqs/internal/debuglog"
 	"mlqs/internal/gmail"
 	"mlqs/internal/imgcache"
+	"mlqs/internal/notify"
 	"mlqs/internal/provider"
 	"mlqs/internal/sanitize"
 )
@@ -51,6 +52,7 @@ type daemon struct {
 
 	notifMu  sync.Mutex
 	notified map[string]string
+	notifier *notify.Notifier
 }
 
 func (d *daemon) broadcast(v any) {
@@ -526,6 +528,17 @@ func main() {
 			log.Printf("account %s: vendor %q not implemented yet", a.Name, a.Vendor)
 		}
 	}
+
+	// notification default-action → deep-link the UI to the conversation
+	d.notifier = notify.New(func(key string) {
+		var k struct {
+			A, ID, S string
+		}
+		if err := json.Unmarshal([]byte(key), &k); err != nil {
+			return
+		}
+		d.broadcast(map[string]any{"type": "openconv", "account": k.A, "id": k.ID, "subject": k.S})
+	})
 
 	for name, p := range d.providers {
 		go d.syncLoop(name, p)

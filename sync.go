@@ -2,7 +2,7 @@ package main
 
 import (
 	"context"
-	"os/exec"
+	"encoding/json"
 	"sync"
 	"time"
 
@@ -120,5 +120,6 @@ func (d *daemon) maybeNotify(account string, c provider.Conversation) {
 	if subj == "" {
 		subj = "(no subject)"
 	}
-	exec.Command("notify-send", "-a", "mlqs", "-i", "mail-unread", who, subj).Start()
+	k, _ := json.Marshal(map[string]string{"A": account, "ID": c.ID, "S": subj})
+	d.notifier.Notify(string(k), who, subj)
 }

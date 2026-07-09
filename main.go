@@ -565,12 +565,26 @@ func main() {
 	}
 
 	// notification default-action → deep-link the UI to the conversation
-	d.notifier = notify.New(func(key string) {
-		debuglog.Gen("notify action invoked: %s", key)
+	d.notifier = notify.New(func(key, action string) {
+		debuglog.Gen("notify action invoked (%s): %s", action, key)
 		var k struct {
 			A, ID, S string
 		}
 		if err := json.Unmarshal([]byte(key), &k); err != nil {
+			return
+		}
+		if action == "read" {
+			if p := d.providers[k.A]; p != nil {
+				go func() {
+					rctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+					defer cancel()
+					p.MarkRead(rctx, k.ID, true)
+					if fs, err := p.ListFolders(rctx); err == nil {
+						d.broadcast(map[string]any{"type": "folders", "account": k.A, "folders": fs})
+					}
+				}()
+			}
+			d.broadcast(map[string]any{"type": "readmarked", "account": k.A, "id": k.ID})
 			return
 		}
 		d.broadcast(map[string]any{"type": "openconv", "account": k.A, "id": k.ID, "subject": k.S})

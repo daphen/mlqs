@@ -306,6 +306,8 @@ Singleton {
             // fire after the fetch (badge + server state)
             if (e.account !== currentAccount) selectAccount(e.account)
             openConv({ tid: e.id, subject: e.subject || "", unread: true })
+        } else if (e.type === "readmarked") {
+            if (e.account === currentAccount) setLocalRead(e.id, true)
         } else if (e.type === "sent") {
             toast("sent ✓")
         } else if (e.type === "toast") {

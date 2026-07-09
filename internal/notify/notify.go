@@ -20,7 +20,7 @@ type Notifier struct {
 	conn     *dbus.Conn
 	notifier enotify.Notifier
 	keys     map[uint32]string
-	onAct    func(key string)
+	onAct    func(key, action string)
 }
 
 // New connects a private session bus (so AppName stays "mlqs" downstream).
@@ -58,7 +58,7 @@ func (n *Notifier) save() {
 	os.WriteFile(keysPath(), b, 0o600)
 }
 
-func New(onActivate func(key string)) *Notifier {
+func New(onActivate func(key, action string)) *Notifier {
 	n := &Notifier{keys: map[uint32]string{}, onAct: onActivate}
 	n.load()
 	conn, err := dbus.SessionBusPrivate()
@@ -84,16 +84,18 @@ func New(onActivate func(key string)) *Notifier {
 }
 
 func (n *Notifier) handleAction(sig *enotify.ActionInvokedSignal) {
-	if sig.ActionKey != "default" {
+	if sig.ActionKey != "default" && sig.ActionKey != "read" {
 		return
 	}
 	n.mu.Lock()
 	key := n.keys[sig.ID]
-	delete(n.keys, sig.ID)
-	n.save()
+	if sig.ActionKey == "default" {
+		delete(n.keys, sig.ID)
+		n.save()
+	}
 	n.mu.Unlock()
 	if key != "" && n.onAct != nil {
-		n.onAct(key)
+		n.onAct(key, sig.ActionKey)
 	}
 }
 
@@ -116,7 +118,10 @@ func (n *Notifier) Notify(key, title, body string) {
 		AppIcon:       "mail-unread",
 		Summary:       title,
 		Body:          body,
-		Actions:       []enotify.Action{enotify.NewDefaultAction("")},
+		Actions: []enotify.Action{
+			enotify.NewDefaultAction(""),
+			{Key: "read", Label: "Mark read"},
+		},
 		ExpireTimeout: enotify.ExpireTimeoutSetByNotificationServer,
 	}
 	var id uint32

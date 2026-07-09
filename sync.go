@@ -125,5 +125,9 @@ func (d *daemon) maybeNotify(account string, c provider.Conversation) {
 	}
 	k, _ := json.Marshal(map[string]string{"A": account, "ID": c.ID, "S": subj})
 	debuglog.Sync("notify FIRE %s/%s: %s — %s", account, c.ID, who, subj)
-	d.notifier.Notify(string(k), who, subj)
+	body := subj
+	if c.Snippet != "" {
+		body += "\n" + c.Snippet
+	}
+	d.notifier.Notify(string(k), who+"  ·  "+account, body)
 }

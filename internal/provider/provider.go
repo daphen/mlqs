@@ -1,5 +1,6 @@
 // Package provider defines the vendor-blind mail interface. Gmail and
 // Microsoft Graph each implement it; everything above is vendor-agnostic.
+// Types carry json tags because they flow to the UI as-is over IPC.
 package provider
 
 import (
@@ -8,60 +9,62 @@ import (
 )
 
 type Address struct {
-	Name  string
-	Email string
+	Name  string `json:"name"`
+	Email string `json:"email"`
 }
 
 // Role classifies well-known folders so the UI can order and glyph them
 // without vendor knowledge: inbox|starred|sent|drafts|archive|spam|trash|label.
 type Folder struct {
-	ID     string
-	Name   string
-	Role   string
-	Unread int
-	Total  int
+	ID     string `json:"id"`
+	Name   string `json:"name"`
+	Role   string `json:"role"`
+	Unread int    `json:"unread"`
+	Total  int    `json:"total"`
 }
 
 type Attachment struct {
-	ID        string
-	Name      string
-	MIME      string
-	Size      int64
-	Inline    bool
-	ContentID string
+	ID        string `json:"id"`
+	Name      string `json:"name"`
+	MIME      string `json:"mime"`
+	Size      int64  `json:"size"`
+	Inline    bool   `json:"inline"`
+	ContentID string `json:"contentId"`
 }
 
 type Message struct {
-	ID          string
-	ConvID      string
-	From        Address
-	To, Cc, Bcc []Address
-	Subject     string
-	Snippet     string
-	BodyHTML    string
-	BodyText    string
-	Date        time.Time
-	Unread      bool
-	Starred     bool
-	Attachments []Attachment
+	ID          string       `json:"id"`
+	ConvID      string       `json:"convId"`
+	From        Address      `json:"from"`
+	To          []Address    `json:"to"`
+	Cc          []Address    `json:"cc"`
+	Bcc         []Address    `json:"bcc"`
+	Subject     string       `json:"subject"`
+	Snippet     string       `json:"snippet"`
+	BodyHTML    string       `json:"bodyHtml"`
+	BodyText    string       `json:"bodyText"`
+	Date        time.Time    `json:"date"`
+	Unread      bool         `json:"unread"`
+	Starred     bool         `json:"starred"`
+	Attachments []Attachment `json:"attachments"`
 }
 
 type Conversation struct {
-	ID        string
-	Subject   string
-	Snippet   string
-	Senders   []Address
-	Date      time.Time
-	Unread    bool
-	Starred   bool
-	HasAttach bool
-	MsgCount  int
-	FolderIDs []string
+	ID        string    `json:"id"`
+	Subject   string    `json:"subject"`
+	Snippet   string    `json:"snippet"`
+	Senders   []Address `json:"senders"`
+	Date      time.Time `json:"date"`
+	Unread    bool      `json:"unread"`
+	Starred   bool      `json:"starred"`
+	HasAttach bool      `json:"hasAttach"`
+	MsgCount  int       `json:"msgCount"`
+	FolderIDs []string  `json:"folderIds"`
 }
 
 type Page struct {
-	Conversations []Conversation
-	NextCursor    string
+	Conversations []Conversation `json:"conversations"`
+	NextCursor    string         `json:"nextCursor"`
 }
 
 // Delta reports what changed since a sync token. FullResync signals the

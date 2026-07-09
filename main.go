@@ -19,11 +19,13 @@ import (
 	"os"
 	"path/filepath"
 	"sync"
+	"time"
 
 	"mlqs/internal/auth"
 	"mlqs/internal/cache"
 	"mlqs/internal/config"
 	"mlqs/internal/debuglog"
+	"mlqs/internal/gmail"
 	"mlqs/internal/provider"
 )
 
@@ -111,9 +113,78 @@ func (d *daemon) serve(conn net.Conn) {
 		switch cmd.Type {
 		case "ping":
 			d.sendTo(conn, map[string]any{"type": "pong"})
+		case "folders", "conversations", "conversation", "search", "markread", "star", "archive", "trash":
+			go d.handle(conn, cmd)
 		default:
 			d.sendTo(conn, map[string]any{"type": "toast",
 				"text": fmt.Sprintf("mlqs: %q not implemented yet", cmd.Type)})
+		}
+	}
+}
+
+// handle proxies provider calls per command. Live API reads for now; the
+// cache-backed render path replaces the read side once the sync loop lands.
+func (d *daemon) handle(conn net.Conn, cmd command) {
+	p := d.providers[cmd.Account]
+	if p == nil {
+		d.sendTo(conn, map[string]any{"type": "toast",
+			"text": fmt.Sprintf("mlqs: account %q not authorized (run: mlqs auth %s)", cmd.Account, cmd.Account)})
+		return
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+
+	fail := func(err error) {
+		debuglog.API("%s %s: %v", cmd.Type, cmd.Account, err)
+		d.sendTo(conn, map[string]any{"type": "toast", "text": fmt.Sprintf("mlqs %s: %v", cmd.Type, err)})
+	}
+	switch cmd.Type {
+	case "folders":
+		fs, err := p.ListFolders(ctx)
+		if err != nil {
+			fail(err)
+			return
+		}
+		d.sendTo(conn, map[string]any{"type": "folders", "account": cmd.Account, "folders": fs})
+	case "conversations":
+		pg, err := p.ListConversations(ctx, cmd.Folder, cmd.Cursor, 50)
+		if err != nil {
+			fail(err)
+			return
+		}
+		d.sendTo(conn, map[string]any{"type": "conversations", "account": cmd.Account,
+			"folder": cmd.Folder, "items": pg.Conversations, "next": pg.NextCursor})
+	case "conversation":
+		msgs, err := p.GetConversation(ctx, cmd.ID)
+		if err != nil {
+			fail(err)
+			return
+		}
+		d.sendTo(conn, map[string]any{"type": "conversation", "account": cmd.Account,
+			"id": cmd.ID, "messages": msgs})
+	case "search":
+		pg, err := p.Search(ctx, cmd.Query, 50)
+		if err != nil {
+			fail(err)
+			return
+		}
+		d.sendTo(conn, map[string]any{"type": "conversations", "account": cmd.Account,
+			"folder": "", "items": pg.Conversations, "next": pg.NextCursor})
+	case "markread":
+		if err := p.MarkRead(ctx, cmd.ID, cmd.Text != "false"); err != nil {
+			fail(err)
+		}
+	case "star":
+		if err := p.Star(ctx, cmd.ID, cmd.Text != "false"); err != nil {
+			fail(err)
+		}
+	case "archive":
+		if err := p.Archive(ctx, cmd.ID); err != nil {
+			fail(err)
+		}
+	case "trash":
+		if err := p.Trash(ctx, cmd.ID); err != nil {
+			fail(err)
 		}
 	}
 }
@@ -173,6 +244,21 @@ func main() {
 	}
 	if len(cfg.Accounts) == 0 {
 		log.Printf("no accounts configured — create %s", config.Path())
+	}
+	ctx := context.Background()
+	for _, a := range cfg.Accounts {
+		switch a.Vendor {
+		case "gmail":
+			ts, err := auth.Source(ctx, a)
+			if err != nil {
+				log.Printf("%v", err)
+				continue
+			}
+			d.providers[a.Name] = gmail.New(ctx, ts)
+			log.Printf("account %s (%s) ready", a.Name, a.Email)
+		default:
+			log.Printf("account %s: vendor %q not implemented yet", a.Name, a.Vendor)
+		}
 	}
 
 	sock := sockPath()

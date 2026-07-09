@@ -17,7 +17,9 @@ import (
 
 var (
 	reEmptyA     = regexp.MustCompile(`(?i)<a[^>]*>(\s|&nbsp;|\x{00a0}|<br\s*/?>)*</a>`)
-	reEmptyBlock = regexp.MustCompile(`(?i)<(div|p|span|b|i|h3)[^>]*>(\s|&nbsp;|\x{00a0}|<br\s*/?>)*</(div|p|span|b|i|h3)>`)
+	// (\s[^>]*)? not [^>]*: a bare [^>]* lets "i" swallow <img> and "b" <br>,
+	// scrubbing every sized inline image as an "empty block"
+	reEmptyBlock = regexp.MustCompile(`(?i)<(div|p|span|b|i|h3)(\s[^>]*)?>(\s|&nbsp;|\x{00a0}|<br\s*/?>)*</(div|p|span|b|i|h3)>`)
 	reManyBr     = regexp.MustCompile(`(?i)(<br\s*/?>\s*){3,}`)
 	reTags       = regexp.MustCompile(`<[^>]+>`)
 )

@@ -16,12 +16,19 @@ Rectangle {
     function clampY(y) {
         return Math.max(list.originY, Math.min(list.originY + list.contentHeight - list.height, y))
     }
-    // j/k scroll; at a scroll edge (or when the thread fits the viewport,
-    // where scrolling has nowhere to go) they flow into message-focus moves
+    // picker-grain j/k: move to the next/prev message as soon as the current
+    // one's relevant edge is visible; scroll within it while it isn't. Long
+    // messages read through, short ones navigate row-to-row like a picker.
     function scrollLine(d) {
-        const maxY = list.originY + list.contentHeight - list.height
-        const atEdge = d > 0 ? list.contentY >= maxY - 1 : list.contentY <= list.originY + 1
-        if (atEdge) { move(d); return }
+        const it = list.itemAtIndex(list.currentIndex)
+        if (!it) { move(d); return }
+        if (d > 0) {
+            const bottomVisible = it.y + it.height <= list.contentY + list.height + 2
+            if (bottomVisible) { move(1); return }
+        } else {
+            const topVisible = it.y >= list.contentY - 2
+            if (topVisible) { move(-1); return }
+        }
         list.contentY = clampY(list.contentY + d * 90)
     }
     function scroll(d) { list.contentY = clampY(list.contentY + d * list.height / 2) }
@@ -205,6 +212,22 @@ Rectangle {
                         color: Theme.fg_muted
                         font.family: Theme.fontFamily; font.pixelSize: 12
                         anchors.verticalCenter: parent.verticalCenter
+                    }
+                    // unread-at-open marker (thread mark-read races the fetch,
+                    // so these show what was new when you opened it)
+                    Rectangle {
+                        visible: modelData.unread === true
+                        anchors.verticalCenter: parent.verticalCenter
+                        height: 16; width: newLbl.implicitWidth + 12; radius: 8
+                        color: Theme.cursor
+                        Text {
+                            id: newLbl
+                            renderType: Text.NativeRendering
+                            anchors.centerIn: parent
+                            text: "new"
+                            color: Theme.ink
+                            font.family: Theme.fontFamily; font.pixelSize: 10; font.weight: 600
+                        }
                     }
                 }
 

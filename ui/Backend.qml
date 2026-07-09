@@ -69,13 +69,18 @@ Singleton {
         send({ type: "threads", account: currentAccount })
     }
 
-    function selectFolder(id, name) {
-        if (id === "__threads") { selectThreads(); return }
+    // _loadFolder switches the index WITHOUT touching an open conversation —
+    // the folders-event auto-select must not clobber a deep-linked conv
+    function _loadFolder(id, name) {
         currentFolderId = id; currentFolderName = name || id
         convsModel.clear(); nextCursor = ""; pendingCursor = ""
-        openConvId = ""; messages = []
         loadingConvs = true
         send({ type: "conversations", account: currentAccount, folder: id })
+    }
+    function selectFolder(id, name) {
+        if (id === "__threads") { selectThreads(); return }
+        openConvId = ""; messages = []
+        _loadFolder(id, name)
     }
 
     function loadMore() {
@@ -214,7 +219,7 @@ Singleton {
                 Object.assign({}, f, { section: f.role === "label" ? "labels" : "mailbox" }))
             if (currentFolderId === "") {
                 const inbox = folders.find(f => f.role === "inbox")
-                if (inbox) selectFolder(inbox.id, inbox.name)
+                if (inbox) _loadFolder(inbox.id, inbox.name)
             }
         } else if (e.type === "conversations") {
             loadingConvs = false

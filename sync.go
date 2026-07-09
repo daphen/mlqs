@@ -87,6 +87,7 @@ func (d *daemon) syncOnce(account string, p provider.Provider) {
 // Keyed on the conv's latest date so label-only changes don't re-notify.
 func (d *daemon) maybeNotify(account string, c provider.Conversation) {
 	if !c.Unread || time.Since(c.Date) > 15*time.Minute {
+		debuglog.Sync("notify skip %s/%s: unread=%v age=%s", account, c.ID, c.Unread, time.Since(c.Date))
 		return
 	}
 	inbox := false
@@ -97,6 +98,7 @@ func (d *daemon) maybeNotify(account string, c provider.Conversation) {
 		}
 	}
 	if !inbox {
+		debuglog.Sync("notify skip %s/%s: not in inbox %v", account, c.ID, c.FolderIDs)
 		return
 	}
 	key := account + ":" + c.ID
@@ -106,6 +108,7 @@ func (d *daemon) maybeNotify(account string, c provider.Conversation) {
 	d.notified[key] = stamp
 	d.notifMu.Unlock()
 	if prev == stamp {
+		debuglog.Sync("notify skip %s/%s: already notified", account, c.ID)
 		return
 	}
 	who := "mail"
@@ -121,5 +124,6 @@ func (d *daemon) maybeNotify(account string, c provider.Conversation) {
 		subj = "(no subject)"
 	}
 	k, _ := json.Marshal(map[string]string{"A": account, "ID": c.ID, "S": subj})
+	debuglog.Sync("notify FIRE %s/%s: %s — %s", account, c.ID, who, subj)
 	d.notifier.Notify(string(k), who, subj)
 }

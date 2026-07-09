@@ -291,7 +291,10 @@ func (d *daemon) handle(conn net.Conn, cmd command) {
 		var wg sync.WaitGroup
 		wg.Add(2)
 		go func() { defer wg.Done(); unreadPg, uerr = p.Search(ctx, "is:unread", 50) }()
-		go func() { defer wg.Done(); minePg, merr = p.Search(ctx, "from:me", 50) }()
+		go func() {
+			defer wg.Done()
+			minePg, merr = p.Search(ctx, `from:me -subject:accepted -subject:invitation -subject:"canceled event"`, 50)
+		}()
 		wg.Wait()
 		if uerr != nil && merr != nil {
 			fail(uerr)
@@ -305,16 +308,27 @@ func (d *daemon) handle(conn net.Conn, cmd command) {
 			}
 			return false
 		}
+		// calendar responses and invite plumbing aren't conversations
+		junk := func(c provider.Conversation) bool {
+			s := strings.ToLower(c.Subject)
+			for _, p := range []string{"accepted:", "declined:", "tentatively accepted:",
+				"invitation:", "updated invitation", "canceled event", "accept your invitation"} {
+				if strings.HasPrefix(s, p) {
+					return true
+				}
+			}
+			return false
+		}
 		seen := map[string]bool{}
 		var items []provider.Conversation
 		for _, c := range unreadPg.Conversations {
-			if c.Unread && hasMe(c) {
+			if c.Unread && hasMe(c) && !junk(c) {
 				seen[c.ID] = true
 				items = append(items, c)
 			}
 		}
 		for _, c := range minePg.Conversations {
-			if !seen[c.ID] {
+			if !seen[c.ID] && !junk(c) {
 				items = append(items, c)
 			}
 		}

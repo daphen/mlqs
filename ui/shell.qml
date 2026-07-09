@@ -192,6 +192,9 @@ FloatingWindow {
             StatusCap { text: "e" }
             CapLabel { text: "archive" }
             CapGap {}
+            StatusCap { text: "n" }
+            CapLabel { text: "compose" }
+            CapGap {}
             StatusCap { text: "u" }
             CapLabel { text: "undo" }
             CapGap {}
@@ -351,6 +354,7 @@ FloatingWindow {
                 if (inConv) conv.startHints()
                 break
             case Qt.Key_C:
+            case Qt.Key_N:
                 composer.composeNew()
                 break
             case Qt.Key_R:

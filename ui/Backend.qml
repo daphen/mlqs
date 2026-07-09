@@ -208,7 +208,7 @@ Singleton {
             date: new Date().toISOString(), unread: false, starred: false,
             attachments: [],
             bodyRich: '<div style="line-height:140%">' + esc + "</div>",
-            hasHtml: false
+            hasHtml: false, sending: true
         }])
     }
 
@@ -327,8 +327,12 @@ Singleton {
         } else if (e.type === "readmarked") {
             if (e.account === currentAccount) setLocalRead(e.id, true)
         } else if (e.type === "sent") {
+            // resolve the optimistic echo's sending state
+            messages = messages.map(m => m.sending ? Object.assign({}, m, { sending: false }) : m)
             toast("sent ✓")
         } else if (e.type === "toast") {
+            if ((e.text || "").indexOf("mlqs send") === 0)
+                messages = messages.map(m => m.sending ? Object.assign({}, m, { sending: false, failed: true }) : m)
             toast(e.text || "")
         }
     }

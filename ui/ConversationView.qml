@@ -327,6 +327,38 @@ Rectangle {
                         font.family: Theme.fontFamily; font.pixelSize: 12
                         anchors.verticalCenter: parent.verticalCenter
                     }
+                    // optimistic-echo lifecycle: pulsing dot while in flight,
+                    // red marker if the daemon reports a send failure
+                    Row {
+                        visible: modelData.sending === true
+                        spacing: 5
+                        anchors.verticalCenter: parent.verticalCenter
+                        Rectangle {
+                            width: 7; height: 7; radius: 4; color: Theme.cursor
+                            anchors.verticalCenter: parent.verticalCenter
+                            SequentialAnimation on opacity {
+                                running: modelData.sending === true; loops: Animation.Infinite
+                                NumberAnimation { from: 1; to: 0.25; duration: 550 }
+                                NumberAnimation { from: 0.25; to: 1; duration: 550 }
+                            }
+                        }
+                        Text {
+                            renderType: Text.NativeRendering
+                            text: "sending…"
+                            color: Theme.fg_muted
+                            font.family: Theme.fontFamily; font.pixelSize: 11
+                            anchors.verticalCenter: parent.verticalCenter
+                        }
+                    }
+                    Text {
+                        renderType: Text.NativeRendering
+                        visible: modelData.failed === true
+                        text: "failed to send"
+                        color: Theme.red
+                        font.family: Theme.fontFamily; font.pixelSize: 11
+                        anchors.verticalCenter: parent.verticalCenter
+                    }
+
                     // unread-at-open marker (thread mark-read races the fetch,
                     // so these show what was new when you opened it)
                     Rectangle {

@@ -39,28 +39,36 @@ const (
 var client = &http.Client{Timeout: 8 * time.Second}
 
 var (
-	reRemoteImg  = regexp.MustCompile(`(?i)<img[^>]*\bsrc="(https?://[^"]+)"[^>]*/?>`)
-	reWidthAttr  = regexp.MustCompile(`(?i)\bwidth="(\d+)"`)
-	reHeightAttr = regexp.MustCompile(`(?i)\bheight="(\d+)"`)
+	reRemoteImg   = regexp.MustCompile(`(?i)<img[^>]*\bsrc="(https?://[^"]+)"[^>]*/?>`)
+	reWidthAttr   = regexp.MustCompile(`(?i)\bwidth="(\d+)"`)
+	reHeightAttr  = regexp.MustCompile(`(?i)\bheight="(\d+)"`)
+	reStyleWidth  = regexp.MustCompile(`(?i)\bstyle="[^"]*?\bwidth:\s*(\d+(?:\.\d+)?)px`)
+	reStyleHeight = regexp.MustCompile(`(?i)\bstyle="[^"]*?\bheight:\s*(\d+(?:\.\d+)?)px`)
 )
 
 // SizeAttrs carries the sender's intended display size onto a rewritten img
-// tag (emails size 32px icons via width= on huge source images). Width wins;
-// height alone only when no width — both would distort after our downscale.
+// tag — emails size 32px icons via width= or CSS on huge @2x source images.
+// Width wins; height alone only when no width (both would distort after our
+// downscale). CSS px widths count: stripping them is what blew up buttons.
 func SizeAttrs(tag string) string {
 	if m := reWidthAttr.FindStringSubmatch(tag); m != nil {
-		w, _ := strconv.Atoi(m[1])
-		if w > 0 {
-			if w > 800 {
-				w = 800
-			}
-			return fmt.Sprintf(` width="%d"`, w)
+		if w, _ := strconv.Atoi(m[1]); w > 0 {
+			return fmt.Sprintf(` width="%d"`, min(w, 800))
+		}
+	}
+	if m := reStyleWidth.FindStringSubmatch(tag); m != nil {
+		if w, _ := strconv.ParseFloat(m[1], 64); w >= 1 {
+			return fmt.Sprintf(` width="%d"`, min(int(w+0.5), 800))
 		}
 	}
 	if m := reHeightAttr.FindStringSubmatch(tag); m != nil {
-		h, _ := strconv.Atoi(m[1])
-		if h > 0 && h <= 800 {
+		if h, _ := strconv.Atoi(m[1]); h > 0 && h <= 800 {
 			return fmt.Sprintf(` height="%d"`, h)
+		}
+	}
+	if m := reStyleHeight.FindStringSubmatch(tag); m != nil {
+		if h, _ := strconv.ParseFloat(m[1], 64); h >= 1 && h <= 800 {
+			return fmt.Sprintf(` height="%d"`, int(h+0.5))
 		}
 	}
 	return ""

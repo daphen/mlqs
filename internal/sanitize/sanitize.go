@@ -1,90 +1,50 @@
-// Package sanitize converts email HTML to the Qt rich-text subset.
-// HARD RULE (spike-proven): a remote URL in an img src makes Qt fetch it
-// from the render thread and segfault quickshell — no network URL may
-// survive into the output, ever. "Load remote images" means the daemon
-// downloads and rewrites to file:// before this output reaches the UI.
+// Package sanitize converts email HTML to the Qt rich-text subset by walking
+// the parsed tree (x/net/html) and re-emitting only safe constructs.
+// HARD RULE (spike-proven): a remote URL in an img src makes Qt fetch it from
+// the render thread and segfault quickshell — only file:// images survive.
+// imgcache rewrites downloadable images to file:// BEFORE this runs; whatever
+// is still remote here failed to download and degrades to alt text.
 package sanitize
 
 import (
-	"html"
+	stdhtml "html"
 	"regexp"
+	"strconv"
 	"strings"
+
+	xhtml "golang.org/x/net/html"
 )
 
 var (
-	reComment   = regexp.MustCompile(`(?s)<!--.*?-->`)
-	reStyle     = regexp.MustCompile(`(?is)<style.*?</style>`)
-	reScript    = regexp.MustCompile(`(?is)<script.*?</script>`)
-	reHead      = regexp.MustCompile(`(?is)<head.*?</head>`)
-	reHiddenDiv = regexp.MustCompile(`(?is)<div[^>]*display\s*:\s*none[^>]*>.*?</div>`)
-	reTableTags = regexp.MustCompile(`(?i)</?(table|tbody|thead|tfoot|tr)[^>]*>`)
-	reTdOpen    = regexp.MustCompile(`(?i)<td[^>]*>`)
-	reTdClose   = regexp.MustCompile(`(?i)</td>`)
-	reThOpen    = regexp.MustCompile(`(?i)<th[^>]*>`)
-	reThClose   = regexp.MustCompile(`(?i)</th>`)
-	// presentational attributes; href/src survive (src is handled below)
-	reAttrs = regexp.MustCompile(`(?i)\s(style|class|id|width|height|align|valign|bgcolor|border|cellpadding|cellspacing|dir|lang|role|data-[a-z-]+|on[a-z]+)="[^"]*"`)
-	// alignment/styling wrappers that fight the theme
-	reCenter = regexp.MustCompile(`(?i)</?center[^>]*>`)
-	reFont   = regexp.MustCompile(`(?i)</?font[^>]*>`)
-	// images: file:// (daemon-cached) survive; everything else resolves to
-	// alt text or vanishes. No network URL may remain (render-thread segfault).
-	reFileImg   = regexp.MustCompile(`(?i)<img[^>]*src="file://[^"]*"[^>]*/?>`)
-	reImgAlt    = regexp.MustCompile(`(?i)<img[^>]*\balt="([^"]+)"[^>]*/?>`)
-	reAnyImg    = regexp.MustCompile(`(?i)<img[^>]*/?>`)
-	reRemoteSrc = regexp.MustCompile(`(?i)src="https?://[^"]*"`)
-	// empty anchors/blocks left behind once their image is gone
-	reEmptyA     = regexp.MustCompile(`(?i)<a[^>]*>(\s|&nbsp;|<br\s*/?>)*</a>`)
-	reEmptyBlock = regexp.MustCompile(`(?i)<(div|p|span|b|i)>(\s|&nbsp;|<br\s*/?>)*</(div|p|span|b|i)>`)
+	reEmptyA     = regexp.MustCompile(`(?i)<a[^>]*>(\s|&nbsp;|\x{00a0}|<br\s*/?>)*</a>`)
+	reEmptyBlock = regexp.MustCompile(`(?i)<(div|p|span|b|i|h3)>(\s|&nbsp;|\x{00a0}|<br\s*/?>)*</(div|p|span|b|i|h3)>`)
 	reManyBr     = regexp.MustCompile(`(?i)(<br\s*/?>\s*){3,}`)
+	reTags       = regexp.MustCompile(`<[^>]+>`)
 )
 
 // HTML sanitizes email HTML into Qt-safe rich text.
 func HTML(s string) string {
-	s = reComment.ReplaceAllString(s, "")
-	s = reStyle.ReplaceAllString(s, "")
-	s = reScript.ReplaceAllString(s, "")
-	s = reHead.ReplaceAllString(s, "")
-	s = reHiddenDiv.ReplaceAllString(s, "")
-	s = reTableTags.ReplaceAllString(s, "\n")
-	s = reThOpen.ReplaceAllString(s, "<div><b>")
-	s = reThClose.ReplaceAllString(s, "</b></div>")
-	s = reTdOpen.ReplaceAllString(s, "<div>")
-	s = reTdClose.ReplaceAllString(s, "</div>")
-	// stash daemon-cached file:// images FIRST — their width/height attrs are
-	// the sender's icon sizing and must survive the attribute strip below
-	var stash []string
-	s = reFileImg.ReplaceAllStringFunc(s, func(m string) string {
-		stash = append(stash, m)
-		return "\x00img\x00"
-	})
-	s = reAttrs.ReplaceAllString(s, "")
-	s = reCenter.ReplaceAllString(s, "")
-	s = reFont.ReplaceAllString(s, "")
-	s = reImgAlt.ReplaceAllString(s, "<i>$1</i>")
-	s = reAnyImg.ReplaceAllString(s, "")
-	s = reRemoteSrc.ReplaceAllString(s, `src=""`)
-	for _, img := range stash {
-		s = strings.Replace(s, "\x00img\x00", img, 1)
+	doc, err := xhtml.Parse(strings.NewReader(s))
+	if err != nil {
+		return Text(reTags.ReplaceAllString(s, " "))
 	}
-
-	// dropped images leave empty anchors and hollow blocks; a few passes
-	// because emptying an inner block can empty its parent
-	s = reEmptyA.ReplaceAllString(s, "")
+	var b strings.Builder
+	render(doc, &b)
+	out := reEmptyA.ReplaceAllString(b.String(), "")
 	for i := 0; i < 4; i++ {
-		prev := s
-		s = reEmptyBlock.ReplaceAllString(s, "")
-		if s == prev {
+		prev := out
+		out = reEmptyBlock.ReplaceAllString(out, "")
+		if out == prev {
 			break
 		}
 	}
-	s = reManyBr.ReplaceAllString(s, "<br><br>")
-	return strings.TrimSpace(s)
+	out = reManyBr.ReplaceAllString(out, "<br><br>")
+	return strings.TrimSpace(out)
 }
 
 // Text renders a plain-text body as rich text (escaped, line breaks kept).
 func Text(s string) string {
-	return strings.ReplaceAll(html.EscapeString(s), "\n", "<br>")
+	return strings.ReplaceAll(stdhtml.EscapeString(s), "\n", "<br>")
 }
 
 // Rich picks the best body: sanitized HTML when present, else escaped text.
@@ -93,4 +53,155 @@ func Rich(bodyHTML, bodyText string) string {
 		return HTML(bodyHTML)
 	}
 	return Text(bodyText)
+}
+
+func attr(n *xhtml.Node, name string) string {
+	for _, a := range n.Attr {
+		if strings.EqualFold(a.Key, name) {
+			return a.Val
+		}
+	}
+	return ""
+}
+
+func hidden(n *xhtml.Node) bool {
+	s := strings.ReplaceAll(strings.ToLower(attr(n, "style")), " ", "")
+	return strings.Contains(s, "display:none") || strings.Contains(s, "visibility:hidden")
+}
+
+func children(n *xhtml.Node, b *strings.Builder) {
+	for c := n.FirstChild; c != nil; c = c.NextSibling {
+		render(c, b)
+	}
+}
+
+func wrap(n *xhtml.Node, b *strings.Builder, tag string) {
+	b.WriteString("<" + tag + ">")
+	children(n, b)
+	b.WriteString("</" + tag + ">")
+}
+
+func render(n *xhtml.Node, b *strings.Builder) {
+	switch n.Type {
+	case xhtml.TextNode:
+		b.WriteString(stdhtml.EscapeString(n.Data))
+	case xhtml.DocumentNode:
+		children(n, b)
+	case xhtml.ElementNode:
+		switch n.Data {
+		case "style", "script", "head", "title", "meta", "link", "noscript", "iframe", "object":
+			return
+		}
+		if hidden(n) {
+			return
+		}
+		switch n.Data {
+		case "br":
+			b.WriteString("<br>")
+		case "hr":
+			b.WriteString("<hr>")
+		case "img":
+			b.WriteString(imgHTML(n))
+		case "a":
+			href := attr(n, "href")
+			if strings.HasPrefix(href, "http") || strings.HasPrefix(href, "mailto:") {
+				b.WriteString(`<a href="` + stdhtml.EscapeString(href) + `">`)
+				children(n, b)
+				b.WriteString("</a>")
+			} else {
+				children(n, b)
+			}
+		case "b", "strong":
+			wrap(n, b, "b")
+		case "i", "em":
+			wrap(n, b, "i")
+		case "u":
+			wrap(n, b, "u")
+		case "s", "strike", "del":
+			wrap(n, b, "s")
+		case "h1", "h2", "h3":
+			wrap(n, b, "h3")
+		case "h4", "h5", "h6":
+			b.WriteString("<div><b>")
+			children(n, b)
+			b.WriteString("</b></div>")
+		case "ul", "ol", "li", "blockquote", "pre":
+			wrap(n, b, n.Data)
+		case "code":
+			wrap(n, b, "code")
+		case "p", "div", "section", "article", "aside", "main", "figure", "figcaption", "footer", "header":
+			wrap(n, b, "div")
+		case "table", "tbody", "thead", "tfoot":
+			children(n, b)
+		case "tr":
+			rowHTML(n, b)
+		case "td", "th":
+			wrap(n, b, "div")
+		default:
+			children(n, b)
+		}
+	}
+}
+
+// rowHTML lays a table row out horizontally when its cells are small inline
+// fragments (icon rows, button rows) and stacks them as blocks otherwise
+// (text columns inlined together would interleave into garbage).
+func rowHTML(n *xhtml.Node, b *strings.Builder) {
+	var cells []string
+	inlineOK := true
+	for c := n.FirstChild; c != nil; c = c.NextSibling {
+		if c.Type != xhtml.ElementNode || (c.Data != "td" && c.Data != "th") {
+			continue
+		}
+		var cb strings.Builder
+		if c.Data == "th" {
+			cb.WriteString("<b>")
+			children(c, &cb)
+			cb.WriteString("</b>")
+		} else {
+			children(c, &cb)
+		}
+		s := cb.String()
+		plain := strings.TrimSpace(reTags.ReplaceAllString(s, ""))
+		if plain == "" && !strings.Contains(s, "<img") {
+			continue
+		}
+		low := strings.ToLower(s)
+		if len(plain) > 200 || strings.Contains(low, "<div") || strings.Contains(low, "<h3") ||
+			strings.Contains(low, "<ul") || strings.Contains(low, "<blockquote") || strings.Contains(low, "<pre") {
+			inlineOK = false
+		}
+		cells = append(cells, s)
+	}
+	switch {
+	case len(cells) == 0:
+	case len(cells) == 1:
+		b.WriteString("<div>" + cells[0] + "</div>")
+	case inlineOK:
+		b.WriteString("<div>" + strings.Join(cells, "&nbsp;&nbsp;") + "</div>")
+	default:
+		for _, c := range cells {
+			b.WriteString("<div>" + c + "</div>")
+		}
+	}
+}
+
+func imgHTML(n *xhtml.Node) string {
+	src := attr(n, "src")
+	if strings.HasPrefix(src, "file://") {
+		out := `<img src="` + stdhtml.EscapeString(src) + `"`
+		if w, err := strconv.Atoi(attr(n, "width")); err == nil && w > 0 {
+			if w > 800 {
+				w = 800
+			}
+			out += ` width="` + strconv.Itoa(w) + `"`
+		} else if h, err := strconv.Atoi(attr(n, "height")); err == nil && h > 0 && h <= 800 {
+			out += ` height="` + strconv.Itoa(h) + `"`
+		}
+		return out + ">"
+	}
+	if alt := strings.TrimSpace(attr(n, "alt")); alt != "" {
+		return "<i>" + stdhtml.EscapeString(alt) + "</i>"
+	}
+	return ""
 }

@@ -754,3 +754,44 @@ func (c *Client) SearchPage(ctx context.Context, query, cursor string, limit int
 	}
 	return c.threadPage(ctx, q, limit)
 }
+
+// HarvestAddresses collects every From/To/Cc address across the threads
+// matching a query — the contacts cold-start seed (people I write to).
+func (c *Client) HarvestAddresses(ctx context.Context, query string, limit int) ([]provider.Address, error) {
+	q := url.Values{"q": {query}, "maxResults": {strconv.Itoa(limit)}}
+	var list struct {
+		Threads []apiThreadStub `json:"threads"`
+	}
+	if err := c.get(ctx, "/threads", q, &list); err != nil {
+		return nil, err
+	}
+	var mu sync.Mutex
+	var out []provider.Address
+	var wg sync.WaitGroup
+	sem := make(chan struct{}, 8)
+	for _, st := range list.Threads {
+		wg.Add(1)
+		go func(id string) {
+			defer wg.Done()
+			sem <- struct{}{}
+			defer func() { <-sem }()
+			qq := url.Values{"format": {"metadata"}}
+			qq["metadataHeaders"] = []string{"From", "To", "Cc"}
+			var t apiThread
+			if err := c.get(ctx, "/threads/"+id, qq, &t); err != nil {
+				return
+			}
+			var got []provider.Address
+			for _, m := range t.Messages {
+				got = append(got, parseAddr(headerVal(m.Payload.Headers, "From")))
+				got = append(got, parseAddrList(headerVal(m.Payload.Headers, "To"))...)
+				got = append(got, parseAddrList(headerVal(m.Payload.Headers, "Cc"))...)
+			}
+			mu.Lock()
+			out = append(out, got...)
+			mu.Unlock()
+		}(st.ID)
+	}
+	wg.Wait()
+	return out, nil
+}

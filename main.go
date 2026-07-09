@@ -614,6 +614,33 @@ func main() {
 
 	for name, p := range d.providers {
 		go d.syncLoop(name, p)
+		// contacts cold-start: seed from sent mail when the store is empty
+		if len(d.db.QueryContacts(name, "", 1)) == 0 {
+			go func(name string, p provider.Provider) {
+				g, ok := p.(*gmail.Client)
+				if !ok {
+					return
+				}
+				sctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
+				defer cancel()
+				addrs, err := g.HarvestAddresses(sctx, "from:me", 50)
+				if err != nil {
+					debuglog.Gen("contact seed %s: %v", name, err)
+					return
+				}
+				now := time.Now().Unix()
+				me := ""
+				if a, err := d.cfg.Account(name); err == nil {
+					me = strings.ToLower(a.Email)
+				}
+				for _, a := range addrs {
+					if a.Email != "" && strings.ToLower(a.Email) != me {
+						d.db.UpsertContact(name, a.Email, a.Name, now)
+					}
+				}
+				debuglog.Gen("contact seed %s: %d addresses", name, len(addrs))
+			}(name, p)
+		}
 	}
 
 	sock := sockPath()

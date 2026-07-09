@@ -81,6 +81,14 @@ FloatingWindow {
         }
     }
 
+    // picker-style scrim: dim the app while composing
+    Rectangle {
+        anchors.fill: parent
+        color: Theme.ink; opacity: composer.visible ? 0.5 : 0
+        visible: opacity > 0
+        Behavior on opacity { NumberAnimation { duration: 140 } }
+    }
+
     MailComposer {
         id: composer
         onClosed: keys.forceActiveFocus()

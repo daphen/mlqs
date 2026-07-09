@@ -48,13 +48,15 @@ Rectangle {
         Rectangle {
             anchors.right: parent.right; anchors.rightMargin: 12
             anchors.verticalCenter: parent.verticalCenter
-            width: 230; height: 30; radius: 8
+            width: 230; height: 30; radius: 15
             color: Theme.surface
             border.width: 1
             border.color: sInput.activeFocus ? Theme.fg_muted : Theme.hairline
             TextField {
                 id: sInput
-                anchors.fill: parent; anchors.leftMargin: 8
+                anchors.fill: parent; anchors.leftMargin: 12
+                verticalAlignment: TextInput.AlignVCenter
+                topPadding: 0; bottomPadding: 0
                 color: Theme.fg; background: null
                 placeholderText: "search…  (/)"
                 placeholderTextColor: Theme.fg_muted

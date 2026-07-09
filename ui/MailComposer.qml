@@ -12,8 +12,9 @@ Rectangle {
     width: Math.min(parent.width - 120, 760)
     height: Math.min(parent.height - 100, 640)
     radius: Theme.radius
-    color: Theme.overlay
-    border.color: Theme.hairline; border.width: 1
+    color: Theme.bg_alt
+    border.width: 1
+    border.color: Qt.rgba(Theme.fg.r, Theme.fg.g, Theme.fg.b, Theme.mode === "light" ? 0.15 : 0.10)
 
     property string mode: "new"      // "new" | "reply"
     property string replyToId: ""
@@ -89,7 +90,9 @@ Rectangle {
         property alias input: input
         property string label: ""
         width: parent.width; height: 34
-        radius: Theme.radiusSm; color: Theme.surface2
+        radius: Theme.radiusSm
+        color: Theme.mode === "light" ? Theme.bg : Theme.surface2
+        border.width: 1; border.color: Theme.hairline
         Row {
             anchors.fill: parent; anchors.leftMargin: 10
             spacing: 8
@@ -131,7 +134,8 @@ Rectangle {
         Rectangle {
             width: parent.width
             height: parent.height - y - (attachRow.visible ? 34 : 0) - 30
-            radius: Theme.radiusSm; color: Theme.surface1
+            radius: Theme.radiusSm
+            color: Theme.mode === "light" ? Theme.bg : Theme.surface1
             border.color: bodyArea.activeFocus ? Theme.fg_muted : Theme.hairline; border.width: 1
             Flickable {
                 id: bodyFlick

@@ -1,0 +1,5 @@
+singleton Theme Theme.qml
+singleton Backend Backend.qml
+MailSidebar MailSidebar.qml
+MailIndex MailIndex.qml
+ConversationView ConversationView.qml

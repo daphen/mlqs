@@ -515,15 +515,17 @@ Rectangle {
                 visible: parent.hasAudience
                 anchors.verticalCenter: parent.verticalCenter
                 height: 18; radius: 9; width: allLbl.implicitWidth + 16
-                color: cv.replyAll ? Theme.cursor : "transparent"
+                // quiet keycap chip, not the loud accent pill — this is
+                // status, not an alert
+                color: cv.replyAll ? Theme.surface2 : "transparent"
                 border.width: 1
-                border.color: cv.replyAll ? Theme.cursor : Theme.hairline
+                border.color: Theme.hairline
                 Text {
                     id: allLbl
                     renderType: Text.NativeRendering
                     anchors.centerIn: parent
                     text: cv.replyAll ? "+" + cv.replyExtras() + " all" : "sender only"
-                    color: cv.replyAll ? Theme.ink : Theme.fg_muted
+                    color: cv.replyAll ? Theme.fg_secondary : Theme.fg_muted
                     font.family: Theme.fontFamily; font.pixelSize: 11; font.weight: 500
                 }
                 TapHandler { onTapped: cv.replyAll = !cv.replyAll }
@@ -562,7 +564,7 @@ Rectangle {
                     cursorDelegate: Rectangle { width: 2; radius: 1; color: Theme.cursor; opacity: replyInput.cursorVisible ? 1 : 0 }
                     font.family: Theme.fontFamily; font.hintingPreference: Font.PreferNoHinting
                     font.pixelSize: 14
-                    placeholderText: "Reply to " + cv.replyTargetName() + "…  (i)"
+                    placeholderText: "Reply to " + cv.replyTargetName() + "…"
                     placeholderTextColor: Theme.fg_muted
                     background: null
                     Keys.onPressed: e => {

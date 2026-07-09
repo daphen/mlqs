@@ -177,11 +177,14 @@ FloatingWindow {
                 if (win.pane === "sidebar") { sidebar.choose(); win.pane = "index" }
                 else if (!inConv) index.open()
                 break
-            case Qt.Key_Escape:
             case Qt.Key_H:
                 // spatial: conversation → index → sidebar
                 if (inConv) Backend.closeConv()
                 else if (win.pane === "index") win.pane = "sidebar"
+                break
+            case Qt.Key_Escape:
+                // cancel-only (hints/search/composer handle their own Esc);
+                // navigation is h's job — Esc must never eject you from a view
                 break
             case Qt.Key_L:
                 if (!inConv && win.pane === "index") index.open()
@@ -208,6 +211,12 @@ FloatingWindow {
                     if (inConv) Backend.trashConv(Backend.openConvId)
                     else if (index.current()) Backend.trashConv(index.current().tid)
                 } else win.arm("d")
+                break
+            case Qt.Key_N:
+                if (inConv) conv.move(1)
+                break
+            case Qt.Key_P:
+                if (inConv) conv.move(-1)
                 break
             case Qt.Key_O:
                 if (inConv) conv.openCurrentHtml()

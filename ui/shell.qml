@@ -216,6 +216,9 @@ FloatingWindow {
             StatusCap { text: "r" }
             CapLabel { text: "reply" }
             CapGap {}
+            StatusCap { text: "a" }
+            CapLabel { text: "recipients" }
+            CapGap {}
             StatusCap { text: "i" }
             CapLabel { text: "insert" }
             CapGap {}

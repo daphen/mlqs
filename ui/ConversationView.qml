@@ -100,12 +100,15 @@ Rectangle {
         const hit = pool.find(a => a && a.email === email)
         return hit && hit.name ? hit.name : email
     }
-    function replySummary() {
+    // legibility: primary recipient by name, everyone else is a count —
+    // "LAST, FIRST" corporate names turn joined lists into token soup
+    function replyPrimary() {
         const r = computeRecipients(replyAll)
-        if (r.to.length === 0) return ""
-        let s = "to " + r.to.map(_nameOf).join(", ")
-        if (r.cc.length) s += " · cc " + r.cc.map(_nameOf).join(", ")
-        return s
+        return r.to.length ? _nameOf(r.to[0]) : ""
+    }
+    function replyExtras() {
+        const full = computeRecipients(true)
+        return Math.max(0, full.to.length - 1) + full.cc.length
     }
     function sendReply() {
         const text = replyInput.text.trim()
@@ -442,12 +445,12 @@ Rectangle {
             Text {
                 renderType: Text.NativeRendering
                 anchors.verticalCenter: parent.verticalCenter
-                text: "↰ " + cv.replySummary()
+                text: "↰ " + cv.replyPrimary()
                 color: Theme.fg_muted
                 font.family: Theme.fontFamily; font.hintingPreference: Font.PreferNoHinting
                 font.pixelSize: 12
                 elide: Text.ElideRight
-                width: Math.min(implicitWidth, parent.width - 220)
+                width: Math.min(implicitWidth, parent.width - 160)
             }
             Rectangle {
                 visible: parent.hasAudience
@@ -460,19 +463,11 @@ Rectangle {
                     id: allLbl
                     renderType: Text.NativeRendering
                     anchors.centerIn: parent
-                    text: cv.replyAll ? "all" : "sender only"
+                    text: cv.replyAll ? "+" + cv.replyExtras() + " all" : "sender only"
                     color: cv.replyAll ? Theme.ink : Theme.fg_muted
                     font.family: Theme.fontFamily; font.pixelSize: 11; font.weight: 500
                 }
                 TapHandler { onTapped: cv.replyAll = !cv.replyAll }
-            }
-            Text {
-                renderType: Text.NativeRendering
-                anchors.verticalCenter: parent.verticalCenter
-                text: (parent.hasAudience ? "a toggle · " : "")
-                      + (Backend.messages.length > 1 ? "R pick message · " : "") + "i write"
-                color: Theme.fg_muted; opacity: 0.7
-                font.family: Theme.fontFamily; font.pixelSize: 11
             }
         }
 

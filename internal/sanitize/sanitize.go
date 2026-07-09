@@ -17,7 +17,7 @@ import (
 
 var (
 	reEmptyA     = regexp.MustCompile(`(?i)<a[^>]*>(\s|&nbsp;|\x{00a0}|<br\s*/?>)*</a>`)
-	reEmptyBlock = regexp.MustCompile(`(?i)<(div|p|span|b|i|h3)>(\s|&nbsp;|\x{00a0}|<br\s*/?>)*</(div|p|span|b|i|h3)>`)
+	reEmptyBlock = regexp.MustCompile(`(?i)<(div|p|span|b|i|h3)[^>]*>(\s|&nbsp;|\x{00a0}|<br\s*/?>)*</(div|p|span|b|i|h3)>`)
 	reManyBr     = regexp.MustCompile(`(?i)(<br\s*/?>\s*){3,}`)
 	reTags       = regexp.MustCompile(`<[^>]+>`)
 )
@@ -54,10 +54,7 @@ func Text(s string) string {
 	inQuote := false
 	for _, l := range lines {
 		if strings.HasPrefix(strings.TrimSpace(l), ">") {
-			if !inQuote {
-				out = append(out, "<i>&#8942; quoted history</i>")
-				inQuote = true
-			}
+			inQuote = true
 			continue
 		}
 		if strings.TrimSpace(l) != "" {
@@ -73,9 +70,11 @@ func Text(s string) string {
 // Rich picks the best body: sanitized HTML when present, else escaped text.
 func Rich(bodyHTML, bodyText string) string {
 	if strings.TrimSpace(bodyHTML) != "" {
-		return HTML(bodyHTML)
+		h, _ := trimQuotedHTML(bodyHTML)
+		return HTML(h)
 	}
-	return Text(bodyText)
+	t, _ := trimQuotedText(bodyText)
+	return Text(t)
 }
 
 func attr(n *xhtml.Node, name string) string {
@@ -87,16 +86,96 @@ func attr(n *xhtml.Node, name string) string {
 	return ""
 }
 
-const quoteMarker = `<div style="line-height:140%"><i>&#8942; quoted history</i></div>`
-
 // quoted detects the quoted-reply-history containers mail clients embed in
 // every reply (Gmail gmail_quote, Outlook divRplyFwdMsg, Thunderbird cite
 // prefix) — rendering them repeats the whole thread inside each message.
 func quoted(n *xhtml.Node) bool {
 	c := strings.ToLower(attr(n, "class"))
 	id := strings.ToLower(attr(n, "id"))
+	if n.Data == "blockquote" && strings.EqualFold(attr(n, "type"), "cite") {
+		return true
+	}
 	return strings.Contains(c, "gmail_quote") || strings.Contains(c, "moz-cite-prefix") ||
 		strings.Contains(c, "quoted-text") || id == "divrplyfwdmsg" || id == "isforwardcontent"
+}
+
+// Outlook doesn't mark its quotes — it opens a border-top separator div with
+// a From:/Sent:/To: header block and pastes the whole prior thread after it.
+// Truncate at the separator; same for the plain-text variants.
+var (
+	reOutlookSep = regexp.MustCompile(`(?i)<div[^>]*border-top:[^;">]*solid[^>]*>`)
+	reOrigMsg    = regexp.MustCompile(`(?i)-+\s*Original Message\s*-+`)
+	reOnWrote    = regexp.MustCompile(`(?i)^On .{5,120} wrote:\s*$`)
+)
+
+func trimQuotedHTML(s string) (string, bool) {
+	cut := len(s)
+	if m := reOutlookSep.FindStringIndex(s); m != nil && m[0] < cut {
+		cut = m[0]
+	}
+	if m := reOrigMsg.FindStringIndex(s); m != nil && m[0] < cut {
+		cut = m[0]
+	}
+	if i := fromHeaderCut(s); i >= 0 && i < cut {
+		cut = i
+	}
+	if cut < len(s) {
+		return s[:cut], true
+	}
+	return s, false
+}
+
+// fromHeaderCut finds an Outlook-for-Mac style quote header (a From:
+// followed closely by Date:/Sent: and Subject:, no separator div) and
+// returns the enclosing block's start — the quote begins there.
+func fromHeaderCut(s string) int {
+	low := strings.ToLower(s)
+	off := 0
+	for {
+		i := strings.Index(low[off:], "from:")
+		if i < 0 {
+			return -1
+		}
+		i += off
+		end := i + 700
+		if end > len(low) {
+			end = len(low)
+		}
+		win := low[i:end]
+		if (strings.Contains(win, "date:") || strings.Contains(win, "sent:")) &&
+			strings.Contains(win, "subject:") {
+			j := strings.LastIndex(low[:i], "<div")
+			if k := strings.LastIndex(low[:i], "<p"); k > j {
+				j = k
+			}
+			if j < 0 {
+				j = i
+			}
+			return j
+		}
+		off = i + 5
+	}
+}
+
+func trimQuotedText(s string) (string, bool) {
+	lines := strings.Split(s, "\n")
+	for i, l := range lines {
+		t := strings.TrimSpace(l)
+		hit := reOrigMsg.MatchString(t) || reOnWrote.MatchString(t)
+		if !hit && strings.HasPrefix(t, "From: ") {
+			for j := i + 1; j <= i+3 && j < len(lines); j++ {
+				n := strings.TrimSpace(lines[j])
+				if strings.HasPrefix(n, "Sent:") || strings.HasPrefix(n, "Date:") || strings.HasPrefix(n, "To:") {
+					hit = true
+					break
+				}
+			}
+		}
+		if hit {
+			return strings.Join(lines[:i], "\n"), true
+		}
+	}
+	return s, false
 }
 
 func hidden(n *xhtml.Node) bool {
@@ -139,7 +218,6 @@ func render(n *xhtml.Node, b *strings.Builder) {
 			return
 		}
 		if quoted(n) {
-			b.WriteString(quoteMarker)
 			return
 		}
 		switch n.Data {

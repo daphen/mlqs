@@ -144,7 +144,11 @@ func (c *Client) ListFolders(ctx context.Context) ([]provider.Folder, error) {
 			}
 			role = "label"
 		}
-		folders = append(folders, provider.Folder{ID: l.ID, Name: l.Name, Role: role})
+		name := l.Name
+		if role == "starred" {
+			name = "Important"
+		}
+		folders = append(folders, provider.Folder{ID: l.ID, Name: name, Role: role})
 	}
 
 	// labels.list has no counts; fetch each label's unread/total concurrently

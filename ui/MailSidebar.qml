@@ -251,8 +251,7 @@ Rectangle {
                     MultiEffect {
                         anchors.fill: gImg; source: gImg
                         colorization: 1
-                        colorizationColor: row.primary ? Theme.bg
-                             : modelData.role === "starred" ? Theme.yellow : Theme.fg_muted
+                        colorizationColor: row.primary ? Theme.bg : Theme.fg_muted
                     }
                 }
                 Text {

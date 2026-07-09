@@ -18,7 +18,11 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	a, err := cfg.Account("gmail")
+	acctName := "gmail"
+	if v := os.Getenv("MLQS_ACCOUNT"); v != "" {
+		acctName = v
+	}
+	a, err := cfg.Account(acctName)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -144,5 +148,28 @@ func main() {
 		}
 		return
 	}
-	log.Fatal("usage: triage stats | scan <query> | markread | check")
+	if len(os.Args) > 2 && os.Args[1] == "peek" {
+		pg, err := c.SearchPage(ctx, os.Args[2], "", 5)
+		if err != nil {
+			log.Fatal(err)
+		}
+		for _, cv := range pg.Conversations {
+			msgs, err := c.GetConversation(ctx, cv.ID)
+			if err != nil || len(msgs) == 0 {
+				continue
+			}
+			m := msgs[len(msgs)-1]
+			body := m.BodyText
+			if body == "" {
+				body = m.BodyHTML
+			}
+			if len(body) > 700 {
+				body = body[:700] + "…"
+			}
+			fmt.Printf("=====\nFROM %s <%s>  %s\nSUBJ %s  (%d msgs in thread)\n\n%s\n\n",
+				m.From.Name, m.From.Email, m.Date.Format("2006-01-02"), m.Subject, len(msgs), body)
+		}
+		return
+	}
+	log.Fatal("usage: triage stats | scan <query> | markread | check | peek <query>")
 }

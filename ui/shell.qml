@@ -182,13 +182,13 @@ FloatingWindow {
                 break
             case Qt.Key_E:
                 if (inConv) Backend.archiveConv(Backend.openConvId)
-                else if (index.current()) Backend.archiveConv(index.current().id)
+                else if (index.current()) Backend.archiveConv(index.current().tid)
                 break
             case Qt.Key_D:
                 if (win.dPending) {
                     win.dPending = false
                     if (inConv) Backend.trashConv(Backend.openConvId)
-                    else if (index.current()) Backend.trashConv(index.current().id)
+                    else if (index.current()) Backend.trashConv(index.current().tid)
                 } else win.arm("d")
                 break
             case Qt.Key_O:

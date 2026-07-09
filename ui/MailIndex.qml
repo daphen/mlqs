@@ -6,43 +6,23 @@ Rectangle {
     color: Theme.bg
     property bool active: true
 
-    // convs is a JS array, so every mutation resets the ListView model (and
-    // its currentIndex). Remember the cursor by thread id and restore after
-    // each change — clamp to the same position when the row got removed.
-    property string _cursorId: ""
-    property int _cursorPos: 0
-    function remember() {
-        _cursorPos = list.currentIndex
-        const c = current()
-        _cursorId = c ? c.id : ""
-    }
-    Connections {
-        target: Backend
-        function onConvsChanged() { Qt.callLater(idx._restoreCursor) }
-        function onCurrentFolderIdChanged() { idx._cursorId = ""; idx._cursorPos = 0 }
-    }
-    function _restoreCursor() {
-        if (list.count === 0) return
-        let i = _cursorId !== "" ? Backend.convs.findIndex(x => x.id === _cursorId) : -1
-        if (i < 0) i = Math.max(0, Math.min(_cursorPos, list.count - 1))
-        const dur = list.highlightMoveDuration
-        list.highlightMoveDuration = 0
-        list.currentIndex = i
-        list.highlightMoveDuration = dur
-        remember()
-    }
-
     function move(d) {
         if (list.count === 0) return
         list.currentIndex = Math.max(0, Math.min(list.count - 1, list.currentIndex + d))
-        remember()
         if (list.currentIndex >= list.count - 8) Backend.loadMore()
     }
     function page(d) { move(d * Math.max(3, Math.floor(list.height / 40 / 2))) }
-    function toTop() { list.currentIndex = 0; remember() }
-    function toEnd() { list.currentIndex = list.count - 1; remember() }
-    function current() { return Backend.convs[list.currentIndex] }
+    function toTop() { list.currentIndex = 0 }
+    function toEnd() { list.currentIndex = list.count - 1 }
+    function current() {
+        return list.currentIndex >= 0 && list.currentIndex < list.count
+            ? Backend.convs.get(list.currentIndex) : null
+    }
     function open() { Backend.openConv(current()) }
+    Connections {
+        target: Backend
+        function onCurrentFolderIdChanged() { list.currentIndex = 0 }
+    }
 
     // header: folder name + count
     Rectangle {
@@ -88,8 +68,15 @@ Rectangle {
         }
 
         delegate: Rectangle {
-            required property var modelData
+            id: row
             required property int index
+            required property string tid
+            required property string subject
+            required property string snippet
+            required property string who
+            required property string dateStr
+            required property bool unread
+            required property bool starred
             width: list.width; height: 38
             readonly property bool cursor: index === list.currentIndex
             color: cursor && idx.active ? Theme.surface2 : "transparent"
@@ -124,7 +111,7 @@ Rectangle {
                 anchors.verticalCenter: parent.verticalCenter
                 width: 7; height: 7; radius: 4
                 color: Theme.cursor
-                visible: modelData.unread
+                visible: row.unread
             }
 
             Text {
@@ -132,45 +119,45 @@ Rectangle {
                 renderType: Text.NativeRendering
                 anchors.left: parent.left; anchors.leftMargin: idx.active ? 46 : 26
                 anchors.verticalCenter: parent.verticalCenter
-                text: modelData.starred ? "" : ""
+                text: row.starred ? "" : ""
                 color: Theme.yellow
                 font.family: Theme.fontFamily; font.pixelSize: 12
                 width: 16
             }
 
             Text {
-                id: who
+                id: whoText
                 renderType: Text.NativeRendering
                 anchors.left: star.right; anchors.leftMargin: 4
                 anchors.verticalCenter: parent.verticalCenter
                 width: 210
-                text: Backend.senderLine(modelData) + (modelData.msgCount > 1 ? " (" + modelData.msgCount + ")" : "")
-                color: modelData.unread ? Theme.fg : Theme.fg_secondary
+                text: row.who
+                color: row.unread ? Theme.fg : Theme.fg_secondary
                 font.family: Theme.fontFamily
                 font.hintingPreference: Font.PreferNoHinting
                 font.pixelSize: 13
-                font.weight: modelData.unread ? 600 : 400
+                font.weight: row.unread ? 600 : 400
                 elide: Text.ElideRight
             }
 
             Text {
                 renderType: Text.NativeRendering
-                anchors.left: who.right; anchors.leftMargin: 14
+                anchors.left: whoText.right; anchors.leftMargin: 14
                 anchors.right: when.left; anchors.rightMargin: 14
                 anchors.verticalCenter: parent.verticalCenter
                 textFormat: Text.StyledText
                 text: {
-                    const subj = (modelData.subject || "(no subject)")
+                    const subj = (row.subject || "(no subject)")
                         .replace(/&/g, "&amp;").replace(/</g, "&lt;")
-                    const snip = (modelData.snippet || "")
+                    const snip = (row.snippet || "")
                         .replace(/&/g, "&amp;").replace(/</g, "&lt;")
                     return subj + (snip ? "  <font color='" + Theme.fg_muted + "'>— " + snip + "</font>" : "")
                 }
-                color: modelData.unread ? Theme.fg : Theme.fg_secondary
+                color: row.unread ? Theme.fg : Theme.fg_secondary
                 font.family: Theme.fontFamily
                 font.hintingPreference: Font.PreferNoHinting
                 font.pixelSize: 13
-                font.weight: modelData.unread ? 600 : 400
+                font.weight: row.unread ? 600 : 400
                 elide: Text.ElideRight
             }
 
@@ -179,14 +166,14 @@ Rectangle {
                 renderType: Text.NativeRendering
                 anchors.right: parent.right; anchors.rightMargin: 14
                 anchors.verticalCenter: parent.verticalCenter
-                text: Backend.fmtDate(modelData.date)
-                color: modelData.unread ? Theme.fg : Theme.fg_muted
+                text: row.dateStr
+                color: row.unread ? Theme.fg : Theme.fg_muted
                 font.family: Theme.fontFamily; font.pixelSize: 12
                 font.features: ({ "tnum": 1 })
             }
 
             TapHandler {
-                onTapped: { list.currentIndex = index; idx.remember(); idx.open() }
+                onTapped: { list.currentIndex = index; idx.open() }
             }
         }
     }

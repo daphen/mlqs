@@ -12,13 +12,32 @@ Singleton {
     property var folders: []
     property string currentFolderId: ""
     property string currentFolderName: ""
-    property var convs: []
+    // ListModel, not a JS array: in-place setProperty/insert/remove keep the
+    // ListView's delegates and cursor alive (array replacement rebuilds all
+    // rows — the cursor "blink" on every read/star toggle)
+    readonly property var convs: convsModel
+    ListModel { id: convsModel }
     property string nextCursor: ""
     property string pendingCursor: ""
     property bool loadingConvs: false
     property var messages: []
     property string openConvId: ""
     property string openConvSubject: ""
+
+    // flat display row for the ListModel (nested arrays don't survive it)
+    function toRow(c) {
+        return {
+            tid: c.id, subject: c.subject || "", snippet: c.snippet || "",
+            who: senderLine(c) + ((c.msgCount || 1) > 1 ? " (" + c.msgCount + ")" : ""),
+            dateStr: fmtDate(c.date), dateMs: new Date(c.date).getTime(),
+            unread: !!c.unread, starred: !!c.starred
+        }
+    }
+    function findRow(id) {
+        for (let i = 0; i < convsModel.count; i++)
+            if (convsModel.get(i).tid === id) return i
+        return -1
+    }
 
     signal toast(string text)
 
@@ -27,7 +46,7 @@ Singleton {
 
     function selectAccount(id) {
         currentAccount = id
-        folders = []; convs = []; messages = []
+        folders = []; convsModel.clear(); messages = []
         openConvId = ""; currentFolderId = ""
         send({ type: "folders", account: id })
     }
@@ -37,7 +56,7 @@ Singleton {
 
     function selectFolder(id, name) {
         currentFolderId = id; currentFolderName = name || id
-        convs = []; nextCursor = ""; pendingCursor = ""
+        convsModel.clear(); nextCursor = ""; pendingCursor = ""
         openConvId = ""; messages = []
         loadingConvs = true
         send({ type: "conversations", account: currentAccount, folder: id, unread: unreadOnly })
@@ -55,40 +74,41 @@ Singleton {
         send({ type: "conversations", account: currentAccount, folder: currentFolderId, cursor: nextCursor, unread: unreadOnly })
     }
 
-    function openConv(c) {
-        if (!c || !c.id) return
-        openConvId = c.id
-        openConvSubject = c.subject || "(no subject)"
+    function openConv(row) {
+        if (!row || !row.tid) return
+        openConvId = row.tid
+        openConvSubject = row.subject || "(no subject)"
         messages = []
-        send({ type: "conversation", account: currentAccount, id: c.id })
-        if (c.unread) {
-            send({ type: "markread", account: currentAccount, id: c.id })
-            markLocalRead(c.id)
+        send({ type: "conversation", account: currentAccount, id: row.tid })
+        if (row.unread) {
+            send({ type: "markread", account: currentAccount, id: row.tid })
+            setLocalRead(row.tid, true)
         }
     }
 
     function setLocalRead(id, read) {
-        convs = convs.map(x => x.id === id ? Object.assign({}, x, { unread: !read }) : x)
+        const i = findRow(id)
+        if (i >= 0) convsModel.setProperty(i, "unread", !read)
         folders = folders.map(f => f.id === currentFolderId
             ? Object.assign({}, f, { unread: Math.max(0, (f.unread || 0) + (read ? -1 : 1)) }) : f)
     }
-    function markLocalRead(id) { setLocalRead(id, true) }
 
-    // R in the index: flip a thread's read state (server + local)
-    function toggleRead(c) {
-        if (!c || !c.id) return
-        const read = !!c.unread   // unread → mark read; read → mark unread
-        send({ type: "markread", account: currentAccount, id: c.id, text: read ? "true" : "false" })
-        setLocalRead(c.id, read)
+    // Shift+R in the index: flip a thread's read state (server + local)
+    function toggleRead(row) {
+        if (!row || !row.tid) return
+        const read = !!row.unread   // unread → mark read; read → mark unread
+        send({ type: "markread", account: currentAccount, id: row.tid, text: read ? "true" : "false" })
+        setLocalRead(row.tid, read)
     }
 
     function closeConv() { openConvId = ""; messages = [] }
 
-    function toggleStar(c) {
-        if (!c || !c.id) return
-        const v = !c.starred
-        send({ type: "star", account: currentAccount, id: c.id, text: v ? "true" : "false" })
-        convs = convs.map(x => x.id === c.id ? Object.assign({}, x, { starred: v }) : x)
+    function toggleStar(row) {
+        if (!row || !row.tid) return
+        const v = !row.starred
+        send({ type: "star", account: currentAccount, id: row.tid, text: v ? "true" : "false" })
+        const i = findRow(row.tid)
+        if (i >= 0) convsModel.setProperty(i, "starred", v)
     }
 
     function archiveConv(id) {
@@ -102,11 +122,13 @@ Singleton {
     }
 
     function removeLocal(id) {
-        const wasUnread = convs.some(x => x.id === id && x.unread)
-        convs = convs.filter(x => x.id !== id)
-        if (wasUnread)
-            folders = folders.map(f => f.id === currentFolderId
-                ? Object.assign({}, f, { unread: Math.max(0, (f.unread || 0) - 1) }) : f)
+        const i = findRow(id)
+        if (i >= 0) {
+            if (convsModel.get(i).unread)
+                folders = folders.map(f => f.id === currentFolderId
+                    ? Object.assign({}, f, { unread: Math.max(0, (f.unread || 0) - 1) }) : f)
+            convsModel.remove(i)
+        }
         if (openConvId === id) closeConv()
     }
 
@@ -127,7 +149,7 @@ Singleton {
 
     function runSearch(q) {
         if (!q) return
-        convs = []; nextCursor = ""; pendingCursor = ""
+        convsModel.clear(); nextCursor = ""; pendingCursor = ""
         currentFolderId = ""; currentFolderName = "search: " + q
         openConvId = ""
         loadingConvs = true
@@ -174,8 +196,9 @@ Singleton {
             // a response from the other filter mode (fast u-toggling) is stale
             if (!!e.unread !== unreadOnly && e.folder === currentFolderId) return
             const items = e.items || []
-            if (pendingCursor !== "") { convs = convs.concat(items); pendingCursor = "" }
-            else convs = items
+            if (pendingCursor !== "") pendingCursor = ""
+            else convsModel.clear()
+            for (const c of items) convsModel.append(toRow(c))
             nextCursor = e.next || ""
         } else if (e.type === "conversation") {
             if (e.id === openConvId) messages = e.messages || []
@@ -184,17 +207,27 @@ Singleton {
             const c = e.conv
             const inFolder = currentFolderId !== "" && (c.folderIds || []).indexOf(currentFolderId) >= 0
                 && (!unreadOnly || c.unread)
-            let list = convs.filter(x => x.id !== c.id)
-            if (inFolder) {
-                // keep the index date-sorted; new mail lands at the top
-                let i = 0
-                while (i < list.length && new Date(list[i].date) > new Date(c.date)) i++
-                list.splice(i, 0, c)
+            const row = toRow(c)
+            const i = findRow(c.id)
+            if (!inFolder) {
+                if (i >= 0) convsModel.remove(i)
+                return
             }
-            convs = list
+            // date-sorted target position; new mail lands at the top
+            let pos = 0
+            while (pos < convsModel.count && convsModel.get(pos).dateMs > row.dateMs
+                   && convsModel.get(pos).tid !== c.id) pos++
+            if (i < 0) convsModel.insert(pos, row)
+            else if (i === pos) convsModel.set(i, row)
+            else {
+                convsModel.remove(i)
+                if (pos > i) pos--
+                convsModel.insert(pos, row)
+            }
         } else if (e.type === "convRemoved") {
             if (e.account !== currentAccount) return
-            convs = convs.filter(x => x.id !== e.id)
+            const i = findRow(e.id)
+            if (i >= 0) convsModel.remove(i)
             if (openConvId === e.id) closeConv()
         } else if (e.type === "sent") {
             toast("sent ✓")

@@ -206,8 +206,8 @@ FloatingWindow {
             StatusCap { text: "k" }
             CapLabel { text: "scroll" }
             CapGap {}
-            StatusCap { text: "n" }
-            StatusCap { text: "p" }
+            StatusCap { text: "⇧j" }
+            StatusCap { text: "⇧k" }
             CapLabel { text: "message" }
             CapGap {}
             StatusCap { text: "f" }
@@ -327,12 +327,6 @@ FloatingWindow {
                     if (inConv) Backend.trashConv(Backend.openConvId)
                     else if (index.current()) Backend.trashConv(index.current().tid)
                 } else win.arm("d")
-                break
-            case Qt.Key_N:
-                if (inConv) conv.move(1)
-                break
-            case Qt.Key_P:
-                if (inConv) conv.move(-1)
                 break
             case Qt.Key_I:
                 if (inConv) conv.focusReply()

@@ -152,6 +152,22 @@ Singleton {
             nextCursor = e.next || ""
         } else if (e.type === "conversation") {
             if (e.id === openConvId) messages = e.messages || []
+        } else if (e.type === "convUpdated") {
+            if (e.account !== currentAccount || !e.conv) return
+            const c = e.conv
+            const inFolder = currentFolderId !== "" && (c.folderIds || []).indexOf(currentFolderId) >= 0
+            let list = convs.filter(x => x.id !== c.id)
+            if (inFolder) {
+                // keep the index date-sorted; new mail lands at the top
+                let i = 0
+                while (i < list.length && new Date(list[i].date) > new Date(c.date)) i++
+                list.splice(i, 0, c)
+            }
+            convs = list
+        } else if (e.type === "convRemoved") {
+            if (e.account !== currentAccount) return
+            convs = convs.filter(x => x.id !== e.id)
+            if (openConvId === e.id) closeConv()
         } else if (e.type === "toast") {
             toast(e.text || "")
         }

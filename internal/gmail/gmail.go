@@ -322,6 +322,7 @@ func (c *Client) threadMeta(ctx context.Context, id string) (provider.Conversati
 		if d := msDate(m.InternalDate); d.After(conv.Date) {
 			conv.Date = d
 		}
+		conv.Snippet = m.Snippet
 		conv.Unread = conv.Unread || hasLabel(m.LabelIDs, "UNREAD")
 		conv.Starred = conv.Starred || hasLabel(m.LabelIDs, "STARRED")
 		for _, l := range m.LabelIDs {
@@ -332,6 +333,10 @@ func (c *Client) threadMeta(ctx context.Context, id string) (provider.Conversati
 		}
 	}
 	return conv, nil
+}
+
+func (c *Client) GetConversationMeta(ctx context.Context, id string) (provider.Conversation, error) {
+	return c.threadMeta(ctx, id)
 }
 
 func (c *Client) ListConversations(ctx context.Context, folderID, cursor string, limit int) (provider.Page, error) {

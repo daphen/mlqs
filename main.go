@@ -48,6 +48,9 @@ type daemon struct {
 
 	mu    sync.Mutex
 	conns map[net.Conn]struct{}
+
+	notifMu  sync.Mutex
+	notified map[string]string
 }
 
 func (d *daemon) broadcast(v any) {
@@ -321,6 +324,7 @@ func main() {
 		db:        db,
 		providers: map[string]provider.Provider{},
 		conns:     map[net.Conn]struct{}{},
+		notified:  map[string]string{},
 	}
 	if len(cfg.Accounts) == 0 {
 		log.Printf("no accounts configured — create %s", config.Path())
@@ -339,6 +343,10 @@ func main() {
 		default:
 			log.Printf("account %s: vendor %q not implemented yet", a.Name, a.Vendor)
 		}
+	}
+
+	for name, p := range d.providers {
+		go d.syncLoop(name, p)
 	}
 
 	sock := sockPath()

@@ -382,6 +382,17 @@ func (d *daemon) handle(conn net.Conn, cmd command) {
 	case "markread":
 		if err := p.MarkRead(ctx, cmd.ID, cmd.Text != "false"); err != nil {
 			fail(err)
+		} else {
+			// rebroadcast counts once Gmail has digested the change — a sync
+			// tick in the gap otherwise overwrites the UI's local decrement
+			go func(account string) {
+				time.Sleep(2500 * time.Millisecond)
+				rctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+				defer cancel()
+				if fs, err := p.ListFolders(rctx); err == nil {
+					d.broadcast(map[string]any{"type": "folders", "account": account, "folders": fs})
+				}
+			}(cmd.Account)
 		}
 	case "star":
 		if err := p.Star(ctx, cmd.ID, cmd.Text != "false"); err != nil {

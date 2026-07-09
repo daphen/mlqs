@@ -13,6 +13,9 @@ FloatingWindow {
     property string pane: "index"   // "sidebar" | "index"
     property bool gPending: false
     property bool dPending: false
+    // vim count prefix: digits accumulate, j/k consume ("8j")
+    property int pendingCount: 0
+    function consumeCount() { const n = pendingCount > 0 ? pendingCount : 1; pendingCount = 0; return n }
 
     Timer { id: pendingReset; interval: 500; onTriggered: { win.gPending = false; win.dPending = false } }
     function arm(which) {
@@ -76,6 +79,11 @@ FloatingWindow {
         }
     }
 
+    MailComposer {
+        id: composer
+        onClosed: keys.forceActiveFocus()
+    }
+
     // toast
     Rectangle {
         id: toast
@@ -106,6 +114,7 @@ FloatingWindow {
         focus: true
 
         Keys.onPressed: e => {
+            if (composer.visible) return
             const ctrl = e.modifiers & Qt.ControlModifier
             const inConv = Backend.openConvId !== ""
 
@@ -121,18 +130,32 @@ FloatingWindow {
             }
             if (ctrl) return
 
+            // count prefix digits (0 only continues an existing count)
+            if (e.key >= Qt.Key_0 && e.key <= Qt.Key_9) {
+                const digit = e.key - Qt.Key_0
+                if (digit !== 0 || win.pendingCount > 0) {
+                    win.pendingCount = win.pendingCount * 10 + digit
+                    e.accepted = true; return
+                }
+            }
+            if (e.key !== Qt.Key_J && e.key !== Qt.Key_K) win.pendingCount = 0
+
             switch (e.key) {
-            case Qt.Key_J:
+            case Qt.Key_J: {
+                const n = win.consumeCount()
                 // in a conversation j/k scroll; Shift+J/K jump between messages
-                if (inConv) (e.modifiers & Qt.ShiftModifier) ? conv.move(1) : conv.scrollLine(1)
-                else if (win.pane === "sidebar") sidebar.move(1)
-                else index.move(1)
+                if (inConv) (e.modifiers & Qt.ShiftModifier) ? conv.move(n) : conv.scrollLine(n)
+                else if (win.pane === "sidebar") sidebar.move(n)
+                else index.move(n)
                 break
-            case Qt.Key_K:
-                if (inConv) (e.modifiers & Qt.ShiftModifier) ? conv.move(-1) : conv.scrollLine(-1)
-                else if (win.pane === "sidebar") sidebar.move(-1)
-                else index.move(-1)
+            }
+            case Qt.Key_K: {
+                const n = win.consumeCount()
+                if (inConv) (e.modifiers & Qt.ShiftModifier) ? conv.move(-n) : conv.scrollLine(-n)
+                else if (win.pane === "sidebar") sidebar.move(-n)
+                else index.move(-n)
                 break
+            }
             case Qt.Key_Return:
             case Qt.Key_Enter:
                 if (win.pane === "sidebar") { sidebar.choose(); win.pane = "index" }
@@ -171,8 +194,12 @@ FloatingWindow {
             case Qt.Key_O:
                 if (inConv) conv.openCurrentHtml()
                 break
+            case Qt.Key_C:
+                composer.composeNew()
+                break
             case Qt.Key_R:
-                if (!inConv) Backend.refresh()
+                if (inConv) composer.reply(!!(e.modifiers & Qt.ShiftModifier))
+                else Backend.refresh()
                 break
             case Qt.Key_Slash:
                 searchBox.open()

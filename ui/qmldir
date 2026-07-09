@@ -3,3 +3,4 @@ singleton Backend Backend.qml
 MailSidebar MailSidebar.qml
 MailIndex MailIndex.qml
 ConversationView ConversationView.qml
+MailComposer MailComposer.qml

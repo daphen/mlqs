@@ -49,11 +49,36 @@ Rectangle {
             required property var modelData
             required property int index
             width: list.width; height: 38
-            color: index === list.currentIndex && idx.active ? Theme.surface2 : "transparent"
+            readonly property bool cursor: index === list.currentIndex
+            color: cursor && idx.active ? Theme.surface2 : "transparent"
+
+            // vim hybrid gutter: distance-from-cursor, orange bar on cursor row
+            Item {
+                id: gutter
+                width: 22; height: parent.height
+                anchors.left: parent.left; anchors.leftMargin: 4
+                visible: idx.active
+                Text {
+                    renderType: Text.NativeRendering
+                    visible: !cursor
+                    anchors.right: parent.right; anchors.rightMargin: 2
+                    anchors.verticalCenter: parent.verticalCenter
+                    text: Math.abs(index - list.currentIndex)
+                    color: Theme.fg; opacity: 0.5
+                    font.family: Theme.fontFamily; font.pixelSize: 12
+                    font.features: ({ "tnum": 1 })
+                }
+                Rectangle {
+                    visible: cursor
+                    anchors.right: parent.right; anchors.rightMargin: 6
+                    anchors.verticalCenter: parent.verticalCenter
+                    width: 3; height: 16; radius: 2; color: Theme.cursor
+                }
+            }
 
             // unread dot
             Rectangle {
-                anchors.left: parent.left; anchors.leftMargin: 12
+                anchors.left: parent.left; anchors.leftMargin: idx.active ? 32 : 12
                 anchors.verticalCenter: parent.verticalCenter
                 width: 7; height: 7; radius: 4
                 color: Theme.cursor
@@ -63,7 +88,7 @@ Rectangle {
             Text {
                 id: star
                 renderType: Text.NativeRendering
-                anchors.left: parent.left; anchors.leftMargin: 26
+                anchors.left: parent.left; anchors.leftMargin: idx.active ? 46 : 26
                 anchors.verticalCenter: parent.verticalCenter
                 text: modelData.starred ? "" : ""
                 color: Theme.yellow

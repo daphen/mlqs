@@ -87,13 +87,21 @@ func (d *daemon) accountsPayload() map[string]any {
 }
 
 type command struct {
-	Type    string `json:"type"`
-	Account string `json:"account"`
-	Folder  string `json:"folder"`
-	ID      string `json:"id"`
-	Cursor  string `json:"cursor"`
-	Text    string `json:"text"`
-	Query   string `json:"query"`
+	Type    string   `json:"type"`
+	Account string   `json:"account"`
+	Folder  string   `json:"folder"`
+	ID      string   `json:"id"`
+	Cursor  string   `json:"cursor"`
+	Text    string   `json:"text"`
+	Query   string   `json:"query"`
+	To      string   `json:"to"`
+	Cc      string   `json:"cc"`
+	Bcc     string   `json:"bcc"`
+	Subject string   `json:"subject"`
+	Body    string   `json:"body"`
+	ReplyTo string   `json:"replyTo"`
+	Conv    string   `json:"conv"`
+	Paths   []string `json:"paths"`
 }
 
 func (d *daemon) serve(conn net.Conn) {
@@ -121,7 +129,7 @@ func (d *daemon) serve(conn net.Conn) {
 		switch cmd.Type {
 		case "ping":
 			d.sendTo(conn, map[string]any{"type": "pong"})
-		case "folders", "conversations", "conversation", "openhtml", "search", "markread", "star", "archive", "trash":
+		case "folders", "conversations", "conversation", "openhtml", "search", "markread", "star", "archive", "trash", "send":
 			go d.handle(conn, cmd)
 		default:
 			d.sendTo(conn, map[string]any{"type": "toast",
@@ -232,7 +240,40 @@ func (d *daemon) handle(conn net.Conn, cmd command) {
 		if err := p.Trash(ctx, cmd.ID); err != nil {
 			fail(err)
 		}
+	case "send":
+		to := parseAddrs(cmd.To)
+		if len(to) == 0 {
+			fail(fmt.Errorf("no recipient"))
+			return
+		}
+		for _, path := range cmd.Paths {
+			if _, err := os.Stat(path); err != nil {
+				fail(fmt.Errorf("attachment not found: %s", path))
+				return
+			}
+		}
+		draft := provider.Draft{
+			To: to, Cc: parseAddrs(cmd.Cc), Bcc: parseAddrs(cmd.Bcc),
+			Subject: cmd.Subject, BodyText: cmd.Body,
+			InReplyTo: cmd.ReplyTo, ConvID: cmd.Conv,
+			AttachmentPaths: cmd.Paths,
+		}
+		if err := p.Send(ctx, draft); err != nil {
+			fail(err)
+			return
+		}
+		d.sendTo(conn, map[string]any{"type": "sent", "account": cmd.Account, "conv": cmd.Conv})
 	}
+}
+
+func parseAddrs(s string) []provider.Address {
+	var out []provider.Address
+	for _, part := range strings.Split(s, ",") {
+		if p := strings.TrimSpace(part); p != "" {
+			out = append(out, provider.Address{Email: p})
+		}
+	}
+	return out
 }
 
 var reCidImg = regexp.MustCompile(`(?i)<img[^>]*\bsrc="cid:([^"]+)"[^>]*/?>`)

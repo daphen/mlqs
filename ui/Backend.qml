@@ -101,6 +101,13 @@ Singleton {
         if (currentFolderId !== "") selectFolder(currentFolderId, currentFolderName)
     }
 
+    function sendMail(d) {
+        send({ type: "send", account: currentAccount,
+               to: d.to || "", cc: d.cc || "", bcc: d.bcc || "",
+               subject: d.subject || "", body: d.body || "",
+               replyTo: d.replyTo || "", conv: d.conv || "", paths: d.paths || [] })
+    }
+
     function runSearch(q) {
         if (!q) return
         convs = []; nextCursor = ""; pendingCursor = ""
@@ -168,6 +175,8 @@ Singleton {
             if (e.account !== currentAccount) return
             convs = convs.filter(x => x.id !== e.id)
             if (openConvId === e.id) closeConv()
+        } else if (e.type === "sent") {
+            toast("sent ✓")
         } else if (e.type === "toast") {
             toast(e.text || "")
         }

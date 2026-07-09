@@ -69,8 +69,31 @@ Rectangle {
                 readonly property bool isSel: bar.active && index === bar.sel
                 color: isSel ? Theme.surface3 : isOpen ? Theme.surface2 : "transparent"
 
+                // relative-number gutter while the sidebar is focused
+                Item {
+                    width: 18; height: parent.height
+                    anchors.left: parent.left; anchors.leftMargin: 4
+                    visible: bar.active
+                    Text {
+                        renderType: Text.NativeRendering
+                        visible: !parent.parent.isSel
+                        anchors.right: parent.right
+                        anchors.verticalCenter: parent.verticalCenter
+                        text: Math.abs(index - bar.sel)
+                        color: Theme.fg; opacity: 0.5
+                        font.family: Theme.fontFamily; font.pixelSize: 11
+                        font.features: ({ "tnum": 1 })
+                    }
+                    Rectangle {
+                        visible: parent.parent.isSel
+                        anchors.right: parent.right; anchors.rightMargin: 4
+                        anchors.verticalCenter: parent.verticalCenter
+                        width: 3; height: 14; radius: 2; color: Theme.cursor
+                    }
+                }
+
                 Row {
-                    anchors.left: parent.left; anchors.leftMargin: 8
+                    anchors.left: parent.left; anchors.leftMargin: bar.active ? 28 : 8
                     anchors.verticalCenter: parent.verticalCenter
                     spacing: 8
                     Text {

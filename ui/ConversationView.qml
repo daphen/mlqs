@@ -64,8 +64,8 @@ Rectangle {
             Text {
                 id: capText
                 anchors.centerIn: parent
-                color: capProto.dim ? Theme.fg_muted
-                     : Qt.tint(Theme.fg_muted, Qt.rgba(Theme.fg.r, Theme.fg.g, Theme.fg.b, 0.55))
+                // family spec (KeybindHelp caps): mono letter, plain fg ink
+                color: capProto.dim ? Theme.fg_muted : Theme.fg
                 font.family: Theme.fontFamily; font.pixelSize: 12; font.weight: 500
                 renderType: Text.NativeRendering
             }

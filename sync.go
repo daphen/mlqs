@@ -37,6 +37,10 @@ func (d *daemon) syncOnce(account string, p provider.Provider) {
 		// on-demand fetches cover the gap
 		d.db.SetDeltaToken(account, delta.NextToken, time.Now().Unix())
 		debuglog.Sync("%s: full resync baseline %s", account, delta.NextToken)
+		// seed the per-account tab badges at startup
+		if fs, err := p.ListFolders(ctx); err == nil {
+			d.broadcast(map[string]any{"type": "folders", "account": account, "folders": fs})
+		}
 		return
 	}
 	if len(delta.Changed) == 0 {

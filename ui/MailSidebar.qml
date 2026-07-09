@@ -33,25 +33,51 @@ Rectangle {
         }
     }
 
-    // account header: same 52px band + hairline as the chat workspace header
+    // account tabs: same 52px band + pill tabs as the chat workspace header
     Item {
         id: acctHeader
         anchors.top: parent.top; anchors.left: parent.left; anchors.right: parent.right
         height: 52
         Rectangle { anchors.bottom: parent.bottom; width: parent.width; height: 1; color: Theme.hairline }
-        Text {
-            renderType: Text.NativeRendering
-            anchors.left: parent.left; anchors.leftMargin: 16
-            anchors.right: parent.right; anchors.rightMargin: 12
+        Row {
+            anchors.left: parent.left; anchors.leftMargin: 10
             anchors.verticalCenter: parent.verticalCenter
-            text: {
-                const w = Backend.workspaces.find(x => x.id === Backend.currentAccount)
-                return w ? (w.email || w.name) : "mlqs"
+            spacing: 4
+            Repeater {
+                model: Backend.workspaces
+                delegate: Rectangle {
+                    required property var modelData
+                    readonly property bool activeTab: modelData.id === Backend.currentAccount
+                    readonly property int tabUnread: Backend.accountUnread[modelData.id] || 0
+                    height: 26; radius: 13
+                    width: Math.min(tabLbl.implicitWidth + 20, 110)
+                    // snap, don't animate — a fade reads as a blink on switch
+                    color: activeTab ? Qt.rgba(Theme.fg.r, Theme.fg.g, Theme.fg.b, 0.10)
+                         : tabHov.hovered ? Theme.hover : "transparent"
+                    border.width: 1
+                    border.color: activeTab ? Theme.hairline : "transparent"
+                    HoverHandler { id: tabHov }
+                    Text {
+                        id: tabLbl
+                        renderType: Text.NativeRendering
+                        anchors.centerIn: parent
+                        text: modelData.name
+                        color: activeTab ? Theme.fg : Theme.dimmedFg
+                        font.family: Theme.fontFamily; font.hintingPreference: Font.PreferNoHinting
+                        font.pixelSize: 12; font.weight: activeTab ? 500 : 400
+                        elide: Text.ElideRight; width: Math.min(implicitWidth, 90)
+                        horizontalAlignment: Text.AlignHCenter
+                    }
+                    // unread dot on inactive accounts with inbox activity
+                    Rectangle {
+                        visible: !activeTab && tabUnread > 0
+                        anchors.right: parent.right; anchors.rightMargin: 2
+                        anchors.top: parent.top; anchors.topMargin: 2
+                        width: 8; height: 8; radius: 4; color: Theme.cursor
+                    }
+                    TapHandler { onTapped: Backend.selectAccount(modelData.id) }
+                }
             }
-            color: Theme.fg; font.family: Theme.fontFamily
-            font.hintingPreference: Font.PreferNoHinting
-            font.pixelSize: 13; font.weight: 600
-            elide: Text.ElideRight
         }
     }
 

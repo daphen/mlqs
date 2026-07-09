@@ -39,7 +39,16 @@ Singleton {
         return -1
     }
 
+    // inbox unread per account (tab badges for the non-active accounts)
+    property var accountUnread: ({})
+
     signal toast(string text)
+
+    function cycleAccount() {
+        if (workspaces.length < 2) return
+        const i = workspaces.findIndex(w => w.id === currentAccount)
+        selectAccount(workspaces[(i + 1) % workspaces.length].id)
+    }
 
     function safeWrite(s) { if (sock.connected) sock.write(s) }
     function send(obj) { safeWrite(JSON.stringify(obj) + "\n") }
@@ -183,6 +192,13 @@ Singleton {
             if (currentAccount === "" && workspaces.length > 0)
                 selectAccount(workspaces[0].id)
         } else if (e.type === "folders") {
+            // track every account's inbox count for the tab badges
+            const inboxF = (e.folders || []).find(f => f.role === "inbox")
+            if (inboxF) {
+                const m = Object.assign({}, accountUnread)
+                m[e.account] = inboxF.unread || 0
+                accountUnread = m
+            }
             if (e.account !== currentAccount) return
             folders = (e.folders || []).map(f =>
                 Object.assign({}, f, { section: f.role === "label" ? "labels" : "mailbox" }))

@@ -10,6 +10,34 @@ FloatingWindow {
     implicitHeight: 950
     color: Theme.bg
 
+    // Keycap chip + muted label — same styling as the desktop picker footer.
+    component StatusCap: Rectangle {
+        property alias text: capText.text
+        width: Math.max(capText.implicitWidth + 12, 22)
+        height: 22
+        radius: 7
+        anchors.verticalCenter: parent.verticalCenter
+        color: Theme.mode === "light" ? Theme.bg : Theme.surface2
+        border.width: 1
+        border.color: Theme.hairline
+        Text { renderType: Text.NativeRendering
+            id: capText; anchors.centerIn: parent
+            color: Qt.tint(Theme.fg_muted, Qt.rgba(Theme.fg.r, Theme.fg.g, Theme.fg.b, 0.55))
+            font.family: Theme.fontFamily; font.hintingPreference: Font.PreferNoHinting
+            font.pixelSize: 11; font.weight: 500
+        }
+    }
+    component CapLabel: Text {
+        renderType: Text.NativeRendering
+        anchors.verticalCenter: parent.verticalCenter
+        color: Qt.tint(Theme.fg_muted, Qt.rgba(Theme.fg.r, Theme.fg.g, Theme.fg.b, 0.55))
+        font.family: Theme.fontFamily; font.hintingPreference: Font.PreferNoHinting
+        font.pixelSize: 11
+    }
+    component CapGap: Item { width: 8; height: 1 }
+
+    readonly property bool insertMode: (Backend.openConvId !== "" && conv.replyHasFocus)
+                                       || composer.visible || searchBox.visible
     property string pane: "index"   // "sidebar" | "index"
     property bool gPending: false
     property bool dPending: false
@@ -24,7 +52,7 @@ FloatingWindow {
     }
 
     Row {
-        anchors.fill: parent
+        anchors { top: parent.top; left: parent.left; right: parent.right; bottom: statusbar.top }
 
         MailSidebar {
             id: sidebar
@@ -106,6 +134,93 @@ FloatingWindow {
         Connections {
             target: Backend
             function onToast(text) { toastText.text = text; toast.opacity = 1; toastHide.restart() }
+        }
+    }
+
+    // ── statusbar chin (picker-footer style, family spec) ──
+    Rectangle {
+        id: statusbar
+        anchors { left: parent.left; right: parent.right; bottom: parent.bottom }
+        height: 36; color: Theme.surface0
+        Rectangle { anchors.top: parent.top; width: parent.width; height: 1; color: Theme.hairline }
+        readonly property bool inConv: Backend.openConvId !== ""
+
+        Row {
+            anchors.left: parent.left; anchors.leftMargin: 14
+            anchors.verticalCenter: parent.verticalCenter
+            spacing: 10
+            Rectangle {
+                width: modeLabel.implicitWidth + 16; height: 22; radius: 7
+                anchors.verticalCenter: parent.verticalCenter
+                color: win.insertMode ? Theme.cursor : Theme.green
+                Text { renderType: Text.NativeRendering
+                    id: modeLabel; anchors.centerIn: parent
+                    text: win.insertMode ? "INSERT" : "NORMAL"
+                    color: (parent.color.r * 0.299 + parent.color.g * 0.587 + parent.color.b * 0.114) > 0.5 ? Theme.ink : Theme.brightWhite
+                    font.family: Theme.fontFamily; font.hintingPreference: Font.PreferNoHinting
+                    font.pixelSize: 11; font.weight: 500; font.letterSpacing: 0.5
+                }
+            }
+            Text { renderType: Text.NativeRendering
+                anchors.verticalCenter: parent.verticalCenter
+                text: "panel: " + (statusbar.inConv ? "conversation" : win.pane)
+                      + "   " + Backend.currentFolderName
+                      + (win.pendingCount > 0 ? "      " + win.pendingCount : "")
+                color: Theme.fg_muted
+                font.family: Theme.fontFamily; font.hintingPreference: Font.PreferNoHinting
+                font.pixelSize: 12
+            }
+        }
+
+        Row {
+            visible: !statusbar.inConv
+            anchors.right: parent.right; anchors.rightMargin: 14
+            anchors.verticalCenter: parent.verticalCenter
+            spacing: 6
+            StatusCap { text: "j" }
+            StatusCap { text: "k" }
+            CapLabel { text: "move" }
+            CapGap {}
+            StatusCap { text: "h" }
+            StatusCap { text: "l" }
+            CapLabel { text: "panel" }
+            CapGap {}
+            StatusCap { text: "↵" }
+            CapLabel { text: "open" }
+            CapGap {}
+            StatusCap { text: "x" }
+            CapLabel { text: "star" }
+            CapGap {}
+            StatusCap { text: "e" }
+            CapLabel { text: "archive" }
+            CapGap {}
+            StatusCap { text: "/" }
+            CapLabel { text: "search" }
+        }
+        Row {
+            visible: statusbar.inConv
+            anchors.right: parent.right; anchors.rightMargin: 14
+            anchors.verticalCenter: parent.verticalCenter
+            spacing: 6
+            StatusCap { text: "j" }
+            StatusCap { text: "k" }
+            CapLabel { text: "read" }
+            CapGap {}
+            StatusCap { text: "n" }
+            StatusCap { text: "p" }
+            CapLabel { text: "msg" }
+            CapGap {}
+            StatusCap { text: "f" }
+            CapLabel { text: "links" }
+            CapGap {}
+            StatusCap { text: "r" }
+            CapLabel { text: "reply" }
+            CapGap {}
+            StatusCap { text: "i" }
+            CapLabel { text: "write" }
+            CapGap {}
+            StatusCap { text: "h" }
+            CapLabel { text: "back" }
         }
     }
 

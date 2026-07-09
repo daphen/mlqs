@@ -46,6 +46,7 @@ Rectangle {
         list.positionViewAtIndex(list.currentIndex, ListView.Beginning)
     }
     signal exitInsert()
+    readonly property bool replyHasFocus: replyInput.activeFocus
 
     // inline reply: target message (R picks one; default newest) + reply-all
     property string replyTargetId: ""

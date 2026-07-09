@@ -43,14 +43,15 @@ Rectangle {
 
     property string hintBaseHtml: ""
 
-    // OS badge language: filled accent chip with ink text (the unread-pill /
-    // clipboard-category look), not brackets. Dim chips that can no longer
-    // match the typed prefix — layout stays stable, matches pop.
+    // Picker-chin keycap language: quiet surface chip, secondary ink, w500 —
+    // like the esc/enter caps, not the loud unread pill. Chips that can no
+    // longer match the typed prefix lose the chip and fade to muted.
     function _badge(label, dim) {
-        const bg = dim ? Theme.surface3 : Theme.cursor
-        const fg = dim ? Theme.fg_muted : Theme.ink
-        return '<span style="background-color:' + bg + ';color:' + fg
-             + ';font-weight:700;font-size:11px;">&nbsp;' + label + '&nbsp;</span>&#8202;'
+        if (dim)
+            return '<span style="color:' + Theme.fg_muted
+                 + ';font-weight:500;font-size:12px;">&nbsp;' + label + '&nbsp;</span>&#8202;'
+        return '<span style="background-color:' + Theme.surface2 + ';color:' + Theme.fg_secondary
+             + ';font-weight:500;font-size:12px;">&nbsp;' + label + '&nbsp;</span>&#8202;'
     }
     function _renderHints() {
         let k = 0

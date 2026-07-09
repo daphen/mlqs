@@ -19,6 +19,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"sync"
 	"time"
@@ -28,6 +29,7 @@ import (
 	"mlqs/internal/config"
 	"mlqs/internal/debuglog"
 	"mlqs/internal/gmail"
+	"mlqs/internal/imgcache"
 	"mlqs/internal/provider"
 	"mlqs/internal/sanitize"
 )
@@ -165,11 +167,16 @@ func (d *daemon) handle(conn net.Conn, cmd command) {
 		}
 		out := make([]map[string]any, 0, len(msgs))
 		for _, m := range msgs {
+			html := m.BodyHTML
+			if html != "" {
+				html = imgcache.RewriteRemote(ctx, html)
+				html = rewriteCids(ctx, p, m, html)
+			}
 			out = append(out, map[string]any{
 				"id": m.ID, "convId": m.ConvID, "from": m.From, "to": m.To, "cc": m.Cc,
 				"subject": m.Subject, "snippet": m.Snippet, "date": m.Date,
 				"unread": m.Unread, "starred": m.Starred, "attachments": m.Attachments,
-				"bodyRich": sanitize.Rich(m.BodyHTML, m.BodyText),
+				"bodyRich": sanitize.Rich(html, m.BodyText),
 				"hasHtml":  strings.TrimSpace(m.BodyHTML) != "",
 			})
 		}
@@ -223,6 +230,43 @@ func (d *daemon) handle(conn net.Conn, cmd command) {
 			fail(err)
 		}
 	}
+}
+
+var reCidImg = regexp.MustCompile(`(?i)<img[^>]*\bsrc="cid:([^"]+)"[^>]*/?>`)
+
+// rewriteCids resolves cid: inline images (pasted screenshots, embedded
+// logos) to cached local files via the vendor attachment API.
+func rewriteCids(ctx context.Context, p provider.Provider, m provider.Message, html string) string {
+	if !strings.Contains(strings.ToLower(html), "cid:") {
+		return html
+	}
+	byCid := map[string]string{}
+	for _, a := range m.Attachments {
+		if a.ContentID != "" {
+			byCid[a.ContentID] = a.ID
+		}
+	}
+	return reCidImg.ReplaceAllStringFunc(html, func(tag string) string {
+		cid := reCidImg.FindStringSubmatch(tag)[1]
+		aid := byCid[cid]
+		if aid == "" {
+			return tag
+		}
+		key := imgcache.Key("cid:" + m.ID + ":" + cid)
+		path := imgcache.Lookup(key)
+		if path == "" {
+			data, err := p.FetchAttachment(ctx, m.ID, aid)
+			if err != nil {
+				debuglog.API("cid fetch %s: %v", cid, err)
+				return tag
+			}
+			path, err = imgcache.StoreBytes(key, data)
+			if err != nil {
+				return tag
+			}
+		}
+		return `<img src="file://` + path + `">`
+	})
 }
 
 func runAuth(args []string) {

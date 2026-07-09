@@ -24,11 +24,19 @@ var (
 	reThClose   = regexp.MustCompile(`(?i)</th>`)
 	// presentational attributes; href/src survive (src is handled below)
 	reAttrs = regexp.MustCompile(`(?i)\s(style|class|id|width|height|align|valign|bgcolor|border|cellpadding|cellspacing|dir|lang|role|data-[a-z-]+|on[a-z]+)="[^"]*"`)
-	// any remaining remote img after the explicit img pass — belt and braces
-	reRemoteImg = regexp.MustCompile(`(?i)<img[^>]*src="https?:[^"]*"[^>]*/?>`)
+	// alignment/styling wrappers that fight the theme
+	reCenter = regexp.MustCompile(`(?i)</?center[^>]*>`)
+	reFont   = regexp.MustCompile(`(?i)</?font[^>]*>`)
+	// images: file:// (daemon-cached) survive; everything else resolves to
+	// alt text or vanishes. No network URL may remain (render-thread segfault).
+	reFileImg   = regexp.MustCompile(`(?i)<img[^>]*src="file://[^"]*"[^>]*/?>`)
+	reImgAlt    = regexp.MustCompile(`(?i)<img[^>]*\balt="([^"]+)"[^>]*/?>`)
+	reAnyImg    = regexp.MustCompile(`(?i)<img[^>]*/?>`)
 	reRemoteSrc = regexp.MustCompile(`(?i)src="https?://[^"]*"`)
-	reBlankImg  = regexp.MustCompile(`(?i)<img[^>]*src=""[^>]*/?>`)
-	reManyBr    = regexp.MustCompile(`(?i)(<br\s*/?>\s*){3,}`)
+	// empty anchors/blocks left behind once their image is gone
+	reEmptyA     = regexp.MustCompile(`(?i)<a[^>]*>(\s|&nbsp;|<br\s*/?>)*</a>`)
+	reEmptyBlock = regexp.MustCompile(`(?i)<(div|p|span|b|i)>(\s|&nbsp;|<br\s*/?>)*</(div|p|span|b|i)>`)
+	reManyBr     = regexp.MustCompile(`(?i)(<br\s*/?>\s*){3,}`)
 )
 
 // HTML sanitizes email HTML into Qt-safe rich text.
@@ -44,9 +52,32 @@ func HTML(s string) string {
 	s = reTdOpen.ReplaceAllString(s, "<div>")
 	s = reTdClose.ReplaceAllString(s, "</div>")
 	s = reAttrs.ReplaceAllString(s, "")
-	s = reRemoteImg.ReplaceAllString(s, "<i>[image]</i>")
+	s = reCenter.ReplaceAllString(s, "")
+	s = reFont.ReplaceAllString(s, "")
+
+	// stash daemon-cached file:// images, drop every other img (alt text stays)
+	var stash []string
+	s = reFileImg.ReplaceAllStringFunc(s, func(m string) string {
+		stash = append(stash, m)
+		return "\x00img\x00"
+	})
+	s = reImgAlt.ReplaceAllString(s, "<i>$1</i>")
+	s = reAnyImg.ReplaceAllString(s, "")
 	s = reRemoteSrc.ReplaceAllString(s, `src=""`)
-	s = reBlankImg.ReplaceAllString(s, "")
+	for _, img := range stash {
+		s = strings.Replace(s, "\x00img\x00", img, 1)
+	}
+
+	// dropped images leave empty anchors and hollow blocks; a few passes
+	// because emptying an inner block can empty its parent
+	s = reEmptyA.ReplaceAllString(s, "")
+	for i := 0; i < 4; i++ {
+		prev := s
+		s = reEmptyBlock.ReplaceAllString(s, "")
+		if s == prev {
+			break
+		}
+	}
 	s = reManyBr.ReplaceAllString(s, "<br><br>")
 	return strings.TrimSpace(s)
 }

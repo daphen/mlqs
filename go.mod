@@ -3,6 +3,7 @@ module mlqs
 go 1.26
 
 require (
+	golang.org/x/image v0.44.0
 	golang.org/x/oauth2 v0.27.0
 	modernc.org/sqlite v1.49.1
 )

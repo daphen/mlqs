@@ -90,6 +90,7 @@ type Provider interface {
 	ListFolders(ctx context.Context) ([]Folder, error)
 	ListConversations(ctx context.Context, folderID, cursor string, limit int) (Page, error)
 	GetConversation(ctx context.Context, id string) ([]Message, error)
+	FetchAttachment(ctx context.Context, messageID, attachmentID string) ([]byte, error)
 	Delta(ctx context.Context, sinceToken string) (Delta, error)
 	Send(ctx context.Context, d Draft) error
 	MarkRead(ctx context.Context, convID string, read bool) error

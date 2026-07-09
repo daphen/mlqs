@@ -71,7 +71,8 @@ Rectangle {
                 id: content
                 anchors.top: parent.top; anchors.topMargin: 12
                 anchors.left: parent.left; anchors.leftMargin: 24
-                anchors.right: parent.right; anchors.rightMargin: 24
+                // readable column: don't let body lines run the full window width
+                width: Math.min(parent.width - 48, 820)
                 spacing: 8
 
                 Row {
@@ -129,6 +130,7 @@ Rectangle {
                     textFormat: Text.RichText
                     wrapMode: Text.Wrap
                     text: modelData.bodyRich || ""
+                    linkColor: Theme.sky
                     color: Theme.fg_secondary
                     font.family: Theme.fontFamily
                     font.hintingPreference: Font.PreferNoHinting

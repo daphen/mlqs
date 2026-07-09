@@ -85,16 +85,18 @@ Singleton {
         send({ type: "conversations", account: currentAccount, folder: currentFolderId, cursor: nextCursor })
     }
 
+    // mark-read is deferred until the conversation payload arrives — sent
+    // eagerly it races the fetch and the per-message "new" flags come back
+    // already cleared
+    property string pendingRead: ""
+
     function openConv(row) {
         if (!row || !row.tid) return
         openConvId = row.tid
         openConvSubject = row.subject || "(no subject)"
         messages = []
+        pendingRead = row.unread ? row.tid : ""
         send({ type: "conversation", account: currentAccount, id: row.tid })
-        if (row.unread) {
-            send({ type: "markread", account: currentAccount, id: row.tid })
-            setLocalRead(row.tid, true)
-        }
     }
 
     function setLocalRead(id, read) {
@@ -219,7 +221,14 @@ Singleton {
             for (const c of items) if (findRow(c.id) < 0) convsModel.append(toRow(c))
             nextCursor = e.next || ""
         } else if (e.type === "conversation") {
-            if (e.id === openConvId) messages = e.messages || []
+            if (e.id === openConvId) {
+                messages = e.messages || []
+                if (pendingRead === e.id) {
+                    send({ type: "markread", account: currentAccount, id: e.id })
+                    setLocalRead(e.id, true)
+                    pendingRead = ""
+                }
+            }
         } else if (e.type === "convUpdated") {
             if (e.account !== currentAccount || !e.conv) return
             if (currentFolderId === "__threads") return

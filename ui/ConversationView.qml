@@ -44,6 +44,60 @@ Rectangle {
         list.currentIndex = list.count - 1
         list.positionViewAtIndex(list.currentIndex, ListView.Beginning)
     }
+    signal exitInsert()
+
+    // inline reply: target message (R picks one; default newest) + reply-all
+    property string replyTargetId: ""
+    property bool replyAll: true
+    readonly property string myEmail: {
+        const w = Backend.workspaces.find(x => x.id === Backend.currentAccount)
+        return w && w.email ? w.email.toLowerCase() : ""
+    }
+    function targetMsg() {
+        return Backend.messages.find(m => m.id === cv.replyTargetId)
+            || Backend.messages[Backend.messages.length - 1] || null
+    }
+    function replyTargetName() {
+        const t = targetMsg()
+        if (!t || !t.from) return ""
+        return t.from.name || t.from.email || ""
+    }
+    function focusReply() { replyInput.forceActiveFocus() }
+    function replyToFocused() {
+        const m = Backend.messages[list.currentIndex]
+        if (!m) return
+        replyTargetId = m.id
+        focusReply()
+    }
+    function recipientLine(m) {
+        const fmt = a => (a.email && a.email.toLowerCase() === cv.myEmail) ? "me" : (a.name || a.email)
+        const tos = (m.to || []).map(fmt)
+        const ccs = (m.cc || []).map(fmt)
+        let s = tos.length ? "to " + tos.join(", ") : ""
+        if (ccs.length) s += (s ? "   ·   " : "") + "cc " + ccs.join(", ")
+        return s
+    }
+    function sendReply() {
+        const text = replyInput.text.trim()
+        if (text === "") return
+        const t = targetMsg()
+        if (!t) return
+        let to = []
+        if (t.from && t.from.email && t.from.email.toLowerCase() !== cv.myEmail) to = [t.from.email]
+        else to = (t.to || []).map(a => a.email).filter(e => e && e.toLowerCase() !== cv.myEmail)
+        let cc = []
+        if (cv.replyAll) {
+            const all = (t.to || []).concat(t.cc || []).map(a => a.email)
+            cc = [...new Set(all.filter(e => e && e.toLowerCase() !== cv.myEmail && to.indexOf(e) < 0))]
+        }
+        let subj = t.subject || Backend.openConvSubject
+        if (!/^re:/i.test(subj)) subj = "Re: " + subj
+        Backend.sendMail({ to: to.join(", "), cc: cc.join(", "), subject: subj,
+                           body: text, replyTo: t.id, conv: Backend.openConvId })
+        replyInput.clear()
+        cv.exitInsert()
+    }
+
     function openCurrentHtml() {
         const m = Backend.messages[list.currentIndex]
         if (m && m.hasHtml) Backend.openHtml(m.id)
@@ -119,7 +173,12 @@ Rectangle {
     Connections {
         target: Backend
         function onMessagesChanged() {
-            if (Backend.messages.length > 0) Qt.callLater(cv.focusNewest)
+            if (Backend.messages.length === 0) return
+            const t = Backend.messages[Backend.messages.length - 1]
+            cv.replyTargetId = t.id
+            // default to reply-all when the newest message had an audience
+            cv.replyAll = ((t.to || []).length + (t.cc || []).length) > 1
+            Qt.callLater(cv.focusNewest)
         }
     }
 
@@ -145,7 +204,7 @@ Rectangle {
 
     ListView {
         id: list
-        anchors { top: header.bottom; left: parent.left; right: parent.right; bottom: parent.bottom; margins: 0 }
+        anchors { top: header.bottom; left: parent.left; right: parent.right; bottom: replyFooter.top; margins: 0 }
         model: Backend.messages
         clip: true
         spacing: 10
@@ -233,6 +292,17 @@ Rectangle {
                             font.family: Theme.fontFamily; font.pixelSize: 10; font.weight: 600
                         }
                     }
+                }
+
+                Text {
+                    renderType: Text.NativeRendering
+                    width: parent.width
+                    visible: text !== ""
+                    text: cv.recipientLine(modelData)
+                    color: Theme.fg_muted
+                    font.family: Theme.fontFamily; font.hintingPreference: Font.PreferNoHinting
+                    font.pixelSize: 12
+                    elide: Text.ElideRight
                 }
 
                 // attachment chips
@@ -327,6 +397,95 @@ Rectangle {
                                 font.family: Theme.fontFamily; font.pixelSize: 12; font.weight: 500
                                 renderType: Text.NativeRendering
                             }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    Rectangle {
+        id: replyFooter
+        anchors { left: parent.left; right: parent.right; bottom: parent.bottom }
+        height: 30 + inputBox.height + 12
+        color: Theme.bg
+
+        Row {
+            anchors { left: parent.left; leftMargin: 24; top: parent.top }
+            height: 26; spacing: 8
+            Text {
+                renderType: Text.NativeRendering
+                anchors.verticalCenter: parent.verticalCenter
+                text: "↰ replying to " + cv.replyTargetName()
+                color: Theme.fg_muted
+                font.family: Theme.fontFamily; font.hintingPreference: Font.PreferNoHinting
+                font.pixelSize: 12
+            }
+            Rectangle {
+                anchors.verticalCenter: parent.verticalCenter
+                height: 18; radius: 9; width: allLbl.implicitWidth + 16
+                color: cv.replyAll ? Theme.cursor : "transparent"
+                border.width: 1
+                border.color: cv.replyAll ? Theme.cursor : Theme.hairline
+                Text {
+                    id: allLbl
+                    renderType: Text.NativeRendering
+                    anchors.centerIn: parent
+                    text: cv.replyAll ? "to all" : "sender only"
+                    color: cv.replyAll ? Theme.ink : Theme.fg_muted
+                    font.family: Theme.fontFamily; font.pixelSize: 11; font.weight: 500
+                }
+                TapHandler { onTapped: cv.replyAll = !cv.replyAll }
+            }
+            Text {
+                renderType: Text.NativeRendering
+                anchors.verticalCenter: parent.verticalCenter
+                text: "a toggle · R pick message · i write"
+                color: Theme.fg_muted; opacity: 0.7
+                font.family: Theme.fontFamily; font.pixelSize: 11
+            }
+        }
+
+        // insert-mode chat field, same focus language as the chat composers
+        Rectangle {
+            id: inputBox
+            anchors { left: parent.left; right: parent.right; bottom: parent.bottom
+                      leftMargin: 14; rightMargin: 14; bottomMargin: 10 }
+            height: Math.min(180, replyInput.implicitHeight + 22)
+            radius: Theme.radius
+            readonly property bool focused: replyInput.activeFocus
+            color: focused ? Theme.tintFill : Theme.surface
+            border.color: focused ? (Theme.mode === "light" ? Theme.fg : "#FFFFFF") : Theme.hairline
+            border.width: focused ? 1.5 : 1
+            Behavior on color { ColorAnimation { duration: 120 } }
+            Behavior on border.color { ColorAnimation { duration: 120 } }
+
+            Flickable {
+                id: replyFlick
+                anchors.fill: parent
+                anchors { leftMargin: 12; rightMargin: 12; topMargin: 10; bottomMargin: 10 }
+                contentHeight: replyInput.implicitHeight; clip: true
+                function ensureVisible(r) {
+                    if (contentY >= r.y) contentY = r.y
+                    else if (contentY + height <= r.y + r.height) contentY = r.y + r.height - height
+                }
+                TextArea {
+                    id: replyInput
+                    width: replyFlick.width
+                    onCursorRectangleChanged: replyFlick.ensureVisible(cursorRectangle)
+                    wrapMode: TextArea.Wrap
+                    color: Theme.fg
+                    cursorDelegate: Rectangle { width: 2; radius: 1; color: Theme.cursor; opacity: replyInput.cursorVisible ? 1 : 0 }
+                    font.family: Theme.fontFamily; font.hintingPreference: Font.PreferNoHinting
+                    font.pixelSize: 14
+                    placeholderText: "Reply to " + cv.replyTargetName() + "…  (i)"
+                    placeholderTextColor: Theme.fg_muted
+                    background: null
+                    Keys.onPressed: e => {
+                        if (e.key === Qt.Key_Escape) { cv.exitInsert(); e.accepted = true; return }
+                        if (e.key === Qt.Key_Return || e.key === Qt.Key_Enter) {
+                            if (e.modifiers & Qt.ShiftModifier) { e.accepted = false; return }
+                            cv.sendReply(); e.accepted = true
                         }
                     }
                 }

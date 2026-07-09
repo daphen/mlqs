@@ -46,6 +46,7 @@ FloatingWindow {
                 id: conv
                 anchors.fill: parent
                 visible: Backend.openConvId !== ""
+                onExitInsert: keys.forceActiveFocus()
             }
         }
     }
@@ -218,6 +219,12 @@ FloatingWindow {
             case Qt.Key_P:
                 if (inConv) conv.move(-1)
                 break
+            case Qt.Key_I:
+                if (inConv) conv.focusReply()
+                break
+            case Qt.Key_A:
+                if (inConv) Backend.openConvId !== "" && (conv.replyAll = !conv.replyAll)
+                break
             case Qt.Key_O:
                 if (inConv) conv.openCurrentHtml()
                 break
@@ -228,7 +235,8 @@ FloatingWindow {
                 composer.composeNew()
                 break
             case Qt.Key_R:
-                if (inConv) composer.reply(!!(e.modifiers & Qt.ShiftModifier))
+                // in a thread: R picks the focused message as reply target
+                if (inConv) conv.replyToFocused()
                 else if (e.modifiers & Qt.ShiftModifier) Backend.toggleRead(index.current())
                 else Backend.refresh()
                 break

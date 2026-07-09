@@ -11,7 +11,11 @@ Rectangle {
         if (list.count === 0) return
         cancelHints()
         list.currentIndex = Math.max(0, Math.min(list.count - 1, list.currentIndex + d))
-        list.positionViewAtIndex(list.currentIndex, ListView.Beginning)
+        // scroll only when the target's start is off-screen — a focus move
+        // between visible messages must not shift the view
+        const it = list.itemAtIndex(list.currentIndex)
+        if (!it || it.y < list.contentY - 2 || it.y > list.contentY + list.height - 40)
+            list.positionViewAtIndex(list.currentIndex, ListView.Beginning)
     }
     function clampY(y) {
         return Math.max(list.originY, Math.min(list.originY + list.contentHeight - list.height, y))

@@ -29,6 +29,7 @@ import (
 	_ "golang.org/x/image/webp"
 
 	"mlqs/internal/debuglog"
+	"mlqs/internal/httpx"
 )
 
 const (
@@ -36,7 +37,7 @@ const (
 	maxBytes = 10 << 20
 )
 
-var client = &http.Client{Timeout: 8 * time.Second}
+var client = httpx.Client(8 * time.Second)
 
 var (
 	reRemoteImg   = regexp.MustCompile(`(?i)<img[^>]*\bsrc="(https?://[^"]+)"[^>]*/?>`)

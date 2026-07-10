@@ -19,6 +19,7 @@ import (
 	"golang.org/x/oauth2/endpoints"
 
 	"mlqs/internal/config"
+	"mlqs/internal/httpx"
 )
 
 // Placeholder until the Graph adapter phase: register the multitenant Azure
@@ -158,7 +159,9 @@ func LoadToken(account string) (*oauth2.Token, error) {
 
 // Source returns a token source that auto-refreshes and persists refreshed
 // tokens back to disk, so a daemon restart never re-prompts for consent.
+// Refreshes go through the hardened client so they can't wedge either.
 func Source(ctx context.Context, a config.Account) (oauth2.TokenSource, error) {
+	ctx = context.WithValue(ctx, oauth2.HTTPClient, httpx.Client(60*time.Second))
 	tok, err := LoadToken(a.Name)
 	if err != nil {
 		return nil, fmt.Errorf("account %q not authorized yet — run: mlqs auth %s (%w)", a.Name, a.Name, err)

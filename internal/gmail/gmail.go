@@ -26,6 +26,7 @@ import (
 	"golang.org/x/oauth2"
 
 	"mlqs/internal/debuglog"
+	"mlqs/internal/httpx"
 	"mlqs/internal/provider"
 )
 
@@ -36,7 +37,10 @@ type Client struct {
 }
 
 func New(ctx context.Context, ts oauth2.TokenSource) *Client {
-	return &Client{hc: oauth2.NewClient(ctx, ts)}
+	return &Client{hc: &http.Client{
+		Transport: &oauth2.Transport{Source: ts, Base: httpx.Transport()},
+		Timeout:   90 * time.Second,
+	}}
 }
 
 type apiError struct {

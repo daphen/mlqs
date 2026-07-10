@@ -12,7 +12,7 @@
         pname = "mlqs";
         version = "0.1.0";
         src = ./.;
-        vendorHash = "sha256-4jgfERSqMuUHD/oD5PuP+aiUPKtO9HqxGAj1pRKV3Jo=";
+        vendorHash = "sha256-cR5w5qdIKJei51Z7t7EHC4N/jNg4g9vYrf/RGJUe0F8=";
         subPackages = [ "." ];
         postInstall = ''
           mkdir -p $out/share/mlqs

@@ -3,6 +3,7 @@ import QtQuick.Controls
 import QtQuick.Window
 import Quickshell
 import "."
+import QsLib
 
 Rectangle {
     id: cv

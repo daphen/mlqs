@@ -2,6 +2,7 @@ import QtQuick
 import QtQuick.Controls
 import Quickshell
 import "."
+import QsLib
 
 FloatingWindow {
     id: win
@@ -10,30 +11,6 @@ FloatingWindow {
     implicitHeight: 950
     color: Theme.bg
 
-    // Keycap chip + muted label — same styling as the desktop picker footer.
-    component StatusCap: Rectangle {
-        property alias text: capText.text
-        width: Math.max(capText.implicitWidth + 12, 22)
-        height: 22
-        radius: 7
-        anchors.verticalCenter: parent.verticalCenter
-        color: Theme.mode === "light" ? Theme.bg : Theme.surface2
-        border.width: 1
-        border.color: Theme.hairline
-        Text { renderType: Text.NativeRendering
-            id: capText; anchors.centerIn: parent
-            color: Qt.tint(Theme.fg_muted, Qt.rgba(Theme.fg.r, Theme.fg.g, Theme.fg.b, 0.55))
-            font.family: Theme.fontFamily; font.hintingPreference: Font.PreferNoHinting
-            font.pixelSize: 11; font.weight: 500
-        }
-    }
-    component CapLabel: Text {
-        renderType: Text.NativeRendering
-        anchors.verticalCenter: parent.verticalCenter
-        color: Qt.tint(Theme.fg_muted, Qt.rgba(Theme.fg.r, Theme.fg.g, Theme.fg.b, 0.55))
-        font.family: Theme.fontFamily; font.hintingPreference: Font.PreferNoHinting
-        font.pixelSize: 11
-    }
     component CapGap: Item { width: 8; height: 1 }
 
     readonly property bool insertMode: (Backend.openConvId !== "" && conv.replyHasFocus)
@@ -94,44 +71,13 @@ FloatingWindow {
         onClosed: keys.forceActiveFocus()
     }
 
-    // feedback pill — the chat clients' "Opening media…" badge, family spec:
-    // inverted ink chip, hairline ring, pulsing accent dot
-    Rectangle {
+    FeedbackPill {
         id: toast
-        z: 201
-        visible: opacity > 0
-        opacity: 0
         anchors.horizontalCenter: parent.horizontalCenter
         anchors.bottom: statusbar.top; anchors.bottomMargin: 8
-        width: tRow.implicitWidth + 28; height: 32; radius: 8
-        color: Theme.mode === "light" ? Theme.ink : Theme.fg
-        border.width: 1; border.color: Theme.hairline
-        Behavior on opacity { NumberAnimation { duration: 140 } }
-        Row {
-            id: tRow
-            anchors.centerIn: parent; spacing: 8
-            Rectangle {
-                width: 8; height: 8; radius: 4; color: Theme.cursor
-                anchors.verticalCenter: parent.verticalCenter
-                SequentialAnimation on opacity {
-                    running: toast.visible; loops: Animation.Infinite
-                    NumberAnimation { from: 1; to: 0.25; duration: 550 }
-                    NumberAnimation { from: 0.25; to: 1; duration: 550 }
-                }
-            }
-            Text {
-                id: toastText
-                renderType: Text.NativeRendering
-                anchors.verticalCenter: parent.verticalCenter
-                color: Theme.bg
-                font.family: Theme.fontFamily; font.hintingPreference: Font.PreferNoHinting
-                font.pixelSize: 13
-            }
-        }
-        Timer { id: toastHide; interval: 3000; onTriggered: toast.opacity = 0 }
         Connections {
             target: Backend
-            function onToast(text) { toastText.text = text; toast.opacity = 1; toastHide.restart() }
+            function onToast(text) { toast.show(text) }
         }
     }
 
@@ -175,59 +121,59 @@ FloatingWindow {
             anchors.right: parent.right; anchors.rightMargin: 14
             anchors.verticalCenter: parent.verticalCenter
             spacing: 6
-            StatusCap { text: "j" }
-            StatusCap { text: "k" }
-            CapLabel { text: "move" }
+            KeyCap { anchors.verticalCenter: parent.verticalCenter; text: "j" }
+            KeyCap { anchors.verticalCenter: parent.verticalCenter; text: "k" }
+            CapLabel { anchors.verticalCenter: parent.verticalCenter; text: "move" }
             CapGap {}
-            StatusCap { text: "h" }
-            StatusCap { text: "l" }
-            CapLabel { text: "panel" }
+            KeyCap { anchors.verticalCenter: parent.verticalCenter; text: "h" }
+            KeyCap { anchors.verticalCenter: parent.verticalCenter; text: "l" }
+            CapLabel { anchors.verticalCenter: parent.verticalCenter; text: "panel" }
             CapGap {}
-            StatusCap { text: "↵" }
-            CapLabel { text: "open" }
+            KeyCap { anchors.verticalCenter: parent.verticalCenter; text: "↵" }
+            CapLabel { anchors.verticalCenter: parent.verticalCenter; text: "open" }
             CapGap {}
-            StatusCap { text: "x" }
-            CapLabel { text: "star" }
+            KeyCap { anchors.verticalCenter: parent.verticalCenter; text: "x" }
+            CapLabel { anchors.verticalCenter: parent.verticalCenter; text: "star" }
             CapGap {}
-            StatusCap { text: "e" }
-            CapLabel { text: "archive" }
+            KeyCap { anchors.verticalCenter: parent.verticalCenter; text: "e" }
+            CapLabel { anchors.verticalCenter: parent.verticalCenter; text: "archive" }
             CapGap {}
-            StatusCap { text: "n" }
-            CapLabel { text: "compose" }
+            KeyCap { anchors.verticalCenter: parent.verticalCenter; text: "n" }
+            CapLabel { anchors.verticalCenter: parent.verticalCenter; text: "compose" }
             CapGap {}
-            StatusCap { text: "u" }
-            CapLabel { text: "undo" }
+            KeyCap { anchors.verticalCenter: parent.verticalCenter; text: "u" }
+            CapLabel { anchors.verticalCenter: parent.verticalCenter; text: "undo" }
             CapGap {}
-            StatusCap { text: "/" }
-            CapLabel { text: "search" }
+            KeyCap { anchors.verticalCenter: parent.verticalCenter; text: "/" }
+            CapLabel { anchors.verticalCenter: parent.verticalCenter; text: "search" }
         }
         Row {
             visible: statusbar.inConv
             anchors.right: parent.right; anchors.rightMargin: 14
             anchors.verticalCenter: parent.verticalCenter
             spacing: 6
-            StatusCap { text: "j" }
-            StatusCap { text: "k" }
-            CapLabel { text: "scroll" }
+            KeyCap { anchors.verticalCenter: parent.verticalCenter; text: "j" }
+            KeyCap { anchors.verticalCenter: parent.verticalCenter; text: "k" }
+            CapLabel { anchors.verticalCenter: parent.verticalCenter; text: "scroll" }
             CapGap {}
-            StatusCap { text: "⇧j" }
-            StatusCap { text: "⇧k" }
-            CapLabel { text: "message" }
+            KeyCap { anchors.verticalCenter: parent.verticalCenter; text: "⇧j" }
+            KeyCap { anchors.verticalCenter: parent.verticalCenter; text: "⇧k" }
+            CapLabel { anchors.verticalCenter: parent.verticalCenter; text: "message" }
             CapGap {}
-            StatusCap { text: "f" }
-            CapLabel { text: "links" }
+            KeyCap { anchors.verticalCenter: parent.verticalCenter; text: "f" }
+            CapLabel { anchors.verticalCenter: parent.verticalCenter; text: "links" }
             CapGap {}
-            StatusCap { text: "r" }
-            CapLabel { text: "reply" }
+            KeyCap { anchors.verticalCenter: parent.verticalCenter; text: "r" }
+            CapLabel { anchors.verticalCenter: parent.verticalCenter; text: "reply" }
             CapGap {}
-            StatusCap { text: "a" }
-            CapLabel { text: "recipients" }
+            KeyCap { anchors.verticalCenter: parent.verticalCenter; text: "a" }
+            CapLabel { anchors.verticalCenter: parent.verticalCenter; text: "recipients" }
             CapGap {}
-            StatusCap { text: "i" }
-            CapLabel { text: "insert" }
+            KeyCap { anchors.verticalCenter: parent.verticalCenter; text: "i" }
+            CapLabel { anchors.verticalCenter: parent.verticalCenter; text: "insert" }
             CapGap {}
-            StatusCap { text: "h" }
-            CapLabel { text: "back" }
+            KeyCap { anchors.verticalCenter: parent.verticalCenter; text: "h" }
+            CapLabel { anchors.verticalCenter: parent.verticalCenter; text: "back" }
         }
     }
 

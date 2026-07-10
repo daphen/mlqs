@@ -2,6 +2,7 @@ import QtQuick
 import QtQuick.Controls
 import Quickshell.Io
 import "."
+import QsLib
 
 // Compose / reply overlay. Ctrl+Enter sends, Esc discards,
 // Ctrl+O attaches the file path currently on the clipboard.

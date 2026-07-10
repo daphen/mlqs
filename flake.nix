@@ -25,6 +25,8 @@
         name = "mlqs-client";
         runtimeInputs = [ daemon pkgs.quickshell pkgs.procps pkgs.coreutils pkgs.xdg-utils pkgs.wl-clipboard ];
         text = ''
+          # QsLib shared QML module (dotfiles-managed, out of store)
+          export QML2_IMPORT_PATH="$HOME/.local/share/qml''${QML2_IMPORT_PATH:+:$QML2_IMPORT_PATH}"
           sock="$XDG_RUNTIME_DIR/mlqs.sock"
           if ! pgrep -x mlqs >/dev/null 2>&1; then
             rm -f "$sock"

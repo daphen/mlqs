@@ -1,6 +1,6 @@
 import QtQuick
-import QtQuick.Effects
 import "."
+import QsLib
 
 // Folder sidebar in the chat clients' visual language: inverted ink-pill
 // cursor, faint tint on the open folder, loud/quiet unread hierarchy.
@@ -15,6 +15,10 @@ Rectangle {
 
     // labels are clutter by default; the section header toggles
     property bool labelsCollapsed: true
+    readonly property var roleIcon: ({
+        inbox: "inbox-arrow-down", starred: "flag-7", sent: "paper-plane-2",
+        drafts: "pen-3", spam: "triangle-warning", trash: "trash", label: "tag"
+    })
     readonly property var visibleFolders: labelsCollapsed
         ? Backend.folders.filter(f => f.section !== "labels") : Backend.folders
 
@@ -51,11 +55,9 @@ Rectangle {
             width: 32; height: 32; radius: 16
             color: Theme.mode === "light" ? Theme.bg : Theme.surface2
             border.width: 1; border.color: Theme.hairline
-            Item {
+            Icon {
                 anchors.centerIn: parent; width: 16; height: 16
-                Image { id: penI; anchors.fill: parent; visible: false
-                        source: "assets/drafts.svg"; sourceSize.width: 32; sourceSize.height: 32 }
-                MultiEffect { anchors.fill: penI; source: penI; colorization: 1; colorizationColor: Theme.fg }
+                name: "pen-3"; color: Theme.fg
             }
             HoverHandler { cursorShape: Qt.PointingHandCursor }
             TapHandler { onTapped: bar.composeRequested() }
@@ -128,22 +130,12 @@ Rectangle {
             anchors.fill: parent
             anchors.leftMargin: bar.active ? 36 : 18
             spacing: 11
-            Item {
+            Icon {
                 width: 18; height: 18
                 anchors.verticalCenter: parent.verticalCenter
-                Image {
-                    id: thImg
-                    anchors.fill: parent
-                    source: "assets/threads.svg"
-                    sourceSize.width: 32; sourceSize.height: 32
-                    visible: false
-                }
-                MultiEffect {
-                    anchors.fill: thImg; source: thImg
-                    colorization: 1
-                    colorizationColor: threadsRow.primary ? Theme.bg
-                         : (threadsRow.isOpen || bar.sel === -1) ? Theme.fg : Theme.fg_muted
-                }
+                name: "msgs"
+                color: threadsRow.primary ? Theme.bg
+                     : (threadsRow.isOpen || bar.sel === -1) ? Theme.fg : Theme.fg_muted
             }
             Text {
                 renderType: Text.NativeRendering
@@ -259,23 +251,13 @@ Rectangle {
                 anchors.leftMargin: bar.active ? 36 : 18
                 anchors.rightMargin: 8 + (modelData.unread > 0 ? 38 : 0)
                 spacing: 11
-                Item {
+                Icon {
                     id: glyph
                     width: 18; height: 18
                     anchors.verticalCenter: parent.verticalCenter
-                    Image {
-                        id: gImg
-                        anchors.fill: parent
-                        source: "assets/" + modelData.role + ".svg"
-                        sourceSize.width: 32; sourceSize.height: 32
-                        visible: false
-                    }
-                    MultiEffect {
-                        anchors.fill: gImg; source: gImg
-                        colorization: 1
-                        colorizationColor: row.primary ? Theme.bg
-                             : (row.emphasize || row.isOpen || row.cursor) ? Theme.fg : Theme.fg_muted
-                    }
+                    name: bar.roleIcon[modelData.role] || "tag"
+                    color: row.primary ? Theme.bg
+                         : (row.emphasize || row.isOpen || row.cursor) ? Theme.fg : Theme.fg_muted
                 }
                 Text {
                     renderType: Text.NativeRendering

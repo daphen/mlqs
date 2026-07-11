@@ -8,6 +8,7 @@ import QsLib
 Rectangle {
     id: cv
     color: Theme.bg
+    radius: Theme.radius
 
     function move(d) {
         if (list.count === 0) return
@@ -243,9 +244,8 @@ Rectangle {
     Rectangle {
         id: header
         anchors { top: parent.top; left: parent.left; right: parent.right }
-        // 52px to match the sidebar's account-tab band — the hairline must
-        // run continuously across both panels
-        height: 52; color: Theme.bg
+        // transparent so the card's rounded top corners stay rounded
+        height: 52; color: "transparent"
         Text {
             renderType: Text.NativeRendering
             anchors.left: parent.left; anchors.leftMargin: 14
@@ -257,7 +257,7 @@ Rectangle {
             font.pixelSize: 14; font.weight: 600
             elide: Text.ElideRight
         }
-        Rectangle { anchors.bottom: parent.bottom; width: parent.width; height: 1; color: Theme.hairline }
+        Rectangle { anchors.bottom: parent.bottom; width: parent.width; height: 1; color: Theme.hairlineSoft }
     }
 
     ListView {
@@ -460,8 +460,8 @@ Rectangle {
                     width: parent.width
                     textFormat: Text.RichText
                     wrapMode: Text.Wrap
-                    text: (cv.hinting && index === cv.hintIndex) ? cv.hintedHtml : (modelData.bodyRich || "")
-                    linkColor: Theme.sky
+                    // Html.colorLinks because linkColor is a no-op for RichText
+                    text: Html.colorLinks((cv.hinting && index === cv.hintIndex) ? cv.hintedHtml : (modelData.bodyRich || ""))
                     color: Theme.fg_secondary
                     font.family: Theme.fontFamily
                     font.hintingPreference: Font.PreferNoHinting
@@ -534,7 +534,8 @@ Rectangle {
         id: replyFooter
         anchors { left: parent.left; right: parent.right; bottom: parent.bottom }
         height: 30 + inputBox.height + 12
-        color: Theme.bg
+        // transparent so the card's rounded bottom corners stay rounded
+        color: "transparent"
 
         Row {
             anchors { left: parent.left; leftMargin: 24; right: parent.right; rightMargin: 14; top: parent.top }

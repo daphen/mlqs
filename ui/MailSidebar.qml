@@ -7,7 +7,8 @@ import QsLib
 Rectangle {
     id: bar
     signal composeRequested()
-    color: Theme.bg_alt
+    // sits directly on the window canvas — no own surface, no divider
+    color: "transparent"
     property bool active: false
     property int sel: 0
     opacity: active ? 1.0 : 0.8
@@ -47,7 +48,6 @@ Rectangle {
         id: acctHeader
         anchors.top: parent.top; anchors.left: parent.left; anchors.right: parent.right
         height: 52
-        Rectangle { anchors.bottom: parent.bottom; width: parent.width; height: 1; color: Theme.hairline }
         // new-message button (reference: circular quill, header right)
         Rectangle {
             anchors.right: parent.right; anchors.rightMargin: 10
@@ -107,8 +107,8 @@ Rectangle {
     // pinned Threads: conversations you participate in, across all folders
     Item {
         id: threadsRow
-        anchors { top: acctHeader.bottom; topMargin: 6; left: parent.left; right: parent.right }
-        height: 38
+        anchors { top: acctHeader.bottom; topMargin: 10; left: parent.left; right: parent.right }
+        height: 42
         readonly property bool isOpen: Backend.currentFolderId === "__threads"
         readonly property bool primary: bar.active && bar.sel === -1
         Rectangle {
@@ -129,7 +129,7 @@ Rectangle {
         Row {
             anchors.fill: parent
             anchors.leftMargin: bar.active ? 36 : 18
-            spacing: 11
+            spacing: 13
             Icon {
                 width: 18; height: 18
                 anchors.verticalCenter: parent.verticalCenter
@@ -205,7 +205,7 @@ Rectangle {
             id: row
             required property var modelData
             required property int index
-            width: list.width; height: 38
+            width: list.width; height: 42
             readonly property bool cursor: index === bar.sel
             readonly property bool isOpen: modelData.id === Backend.currentFolderId
             readonly property bool primary: bar.active && cursor
@@ -250,7 +250,7 @@ Rectangle {
                 anchors.fill: parent
                 anchors.leftMargin: bar.active ? 36 : 18
                 anchors.rightMargin: 8 + (modelData.unread > 0 ? 38 : 0)
-                spacing: 11
+                spacing: 13
                 Icon {
                     id: glyph
                     width: 18; height: 18

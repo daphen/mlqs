@@ -9,7 +9,8 @@ FloatingWindow {
     title: "mail-client"
     implicitWidth: 1480
     implicitHeight: 950
-    color: Theme.bg
+    // reference layout: flat canvas, panes float as cards on it
+    color: Theme.bg_alt
 
     component CapGap: Item { width: 8; height: 1 }
 
@@ -37,10 +38,9 @@ FloatingWindow {
             active: win.pane === "sidebar"
             onComposeRequested: composer.composeNew()
         }
-        Rectangle { width: 1; height: parent.height; color: Theme.hairline }
 
         Item {
-            width: parent.width - 251; height: parent.height
+            width: parent.width - 250; height: parent.height
 
             MailIndex {
                 id: index
@@ -52,6 +52,8 @@ FloatingWindow {
             ConversationView {
                 id: conv
                 anchors.fill: parent
+                anchors.topMargin: 8; anchors.leftMargin: 4
+                anchors.rightMargin: 12; anchors.bottomMargin: 12
                 visible: Backend.openConvId !== ""
                 onExitInsert: keys.forceActiveFocus()
             }

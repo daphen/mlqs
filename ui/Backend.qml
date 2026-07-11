@@ -262,6 +262,65 @@ Singleton {
                replyTo: d.replyTo || "", conv: d.conv || "", paths: d.paths || [] })
     }
 
+    // ── calendar agenda (merged across accounts) ──
+    readonly property var events: eventsModel
+    ListModel { id: eventsModel }
+    property bool loadingAgenda: false
+    property var _agendaByAccount: ({})
+
+    function selectCalendar() {
+        currentFolderId = "__calendar"; currentFolderName = "Calendar"
+        openConvId = ""; messages = []
+        refreshAgenda()
+    }
+    function refreshAgenda() {
+        _agendaByAccount = {}
+        eventsModel.clear()
+        loadingAgenda = true
+        for (const w of workspaces) send({ type: "agenda", account: w.id })
+    }
+    function _rebuildAgenda() {
+        eventsModel.clear()
+        let all = []
+        for (const acct in _agendaByAccount)
+            for (const ev of _agendaByAccount[acct]) all.push(Object.assign({ account: acct }, ev))
+        all.sort((a, b) => new Date(a.start) - new Date(b.start))
+        for (const ev of all) eventsModel.append(toEventRow(ev))
+    }
+    function toEventRow(ev) {
+        const s = new Date(ev.start), e = new Date(ev.end)
+        return {
+            eid: ev.id, calId: ev.calId, account: ev.account,
+            title: ev.title || "(untitled)", location: ev.location || "",
+            startMs: s.getTime(), dayKey: dayKey(s),
+            timeStr: ev.allDay ? "all day" : Qt.formatTime(s, "hh:mm") + "–" + Qt.formatTime(e, "hh:mm"),
+            allDay: !!ev.allDay, meetLink: ev.meetLink || "", htmlLink: ev.htmlLink || "",
+            myStatus: ev.myStatus || "", organizer: ev.organizer || "",
+            attendeeCount: (ev.attendees || []).length
+        }
+    }
+    function dayKey(d) {
+        const now = new Date()
+        const tomorrow = new Date(now.getTime() + 86400000)
+        if (d.toDateString() === now.toDateString()) return "Today — " + Qt.formatDate(d, "ddd MMM d")
+        if (d.toDateString() === tomorrow.toDateString()) return "Tomorrow — " + Qt.formatDate(d, "ddd MMM d")
+        return Qt.formatDate(d, "dddd — MMM d")
+    }
+    function rsvp(row, status) {
+        send({ type: "rsvp", account: row.account, folder: row.calId, id: row.eid, text: status })
+        for (let i = 0; i < eventsModel.count; i++)
+            if (eventsModel.get(i).eid === row.eid) eventsModel.setProperty(i, "myStatus", status)
+    }
+    function rsvpMail(msgId, status) {
+        send({ type: "rsvpmail", account: currentAccount, conv: openConvId, id: msgId, text: status })
+        toast("rsvp: " + status + "…")
+    }
+    function createEvent(d) {
+        send({ type: "createevent", account: d.account || currentAccount,
+               subject: d.title || "", query: d.location || "", body: d.notes || "",
+               to: d.attendees || "", start: d.start, end: d.end, meet: !!d.meet })
+    }
+
     function runSearch(q) {
         if (!q) return
         convsModel.clear(); nextCursor = ""; pendingCursor = ""
@@ -375,6 +434,17 @@ Singleton {
             // resolve the optimistic echo's sending state
             messages = messages.map(m => m.sending ? Object.assign({}, m, { sending: false }) : m)
             toast("sent ✓")
+        } else if (e.type === "agenda") {
+            loadingAgenda = false
+            const m = Object.assign({}, _agendaByAccount)
+            m[e.account] = e.events || []
+            _agendaByAccount = m
+            if (currentFolderId === "__calendar") _rebuildAgenda()
+        } else if (e.type === "rsvped") {
+            toast("rsvp saved" + (e.status ? ": " + e.status : ""))
+        } else if (e.type === "eventcreated") {
+            toast("event created ✓")
+            if (currentFolderId === "__calendar") refreshAgenda()
         } else if (e.type === "toast") {
             if ((e.text || "").indexOf("mlqs send") === 0)
                 messages = messages.map(m => m.sending ? Object.assign({}, m, { sending: false, failed: true }) : m)
@@ -392,7 +462,8 @@ Singleton {
             // daemon re-sends workspaces on connect; refresh the open view too
             if (currentAccount !== "") {
                 send({ type: "folders", account: currentAccount })
-                if (currentFolderId !== "" && currentFolderId !== "__threads")
+                if (currentFolderId === "__calendar") refreshAgenda()
+                else if (currentFolderId !== "" && currentFolderId !== "__threads")
                     send({ type: "conversations", account: currentAccount, folder: currentFolderId })
                 // an open conversation's fetch died with the old daemon —
                 // re-request it or it shows "loading…" forever

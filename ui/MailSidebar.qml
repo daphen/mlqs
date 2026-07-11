@@ -23,21 +23,23 @@ Rectangle {
     readonly property var visibleFolders: labelsCollapsed
         ? Backend.folders.filter(f => f.section !== "labels") : Backend.folders
 
-    // sel === -1 is the pinned Threads row (chat parity: virtual top item)
+    // pinned virtual rows above the folders: Threads (-2), Calendar (-1)
     function move(d) {
         if (visibleFolders.length === 0) return
-        sel = Math.max(-1, Math.min(visibleFolders.length - 1, sel + d))
+        sel = Math.max(-2, Math.min(visibleFolders.length - 1, sel + d))
         if (sel >= 0) list.positionViewAtIndex(sel, ListView.Contain)
     }
     function choose() {
-        if (sel === -1) { Backend.selectThreads(); return }
+        if (sel === -2) { Backend.selectThreads(); return }
+        if (sel === -1) { Backend.selectCalendar(); return }
         const f = visibleFolders[sel]
         if (f) Backend.selectFolder(f.id, f.name)
     }
     Connections {
         target: Backend
         function onCurrentFolderIdChanged() {
-            if (Backend.currentFolderId === "__threads") { bar.sel = -1; return }
+            if (Backend.currentFolderId === "__threads") { bar.sel = -2; return }
+            if (Backend.currentFolderId === "__calendar") { bar.sel = -1; return }
             const i = bar.visibleFolders.findIndex(f => f.id === Backend.currentFolderId)
             if (i >= 0) bar.sel = i
         }
@@ -110,7 +112,7 @@ Rectangle {
         anchors { top: acctHeader.bottom; topMargin: 10; left: parent.left; right: parent.right }
         height: 42
         readonly property bool isOpen: Backend.currentFolderId === "__threads"
-        readonly property bool primary: bar.active && bar.sel === -1
+        readonly property bool primary: bar.active && bar.sel === -2
         Rectangle {
             anchors.fill: parent
             anchors.leftMargin: 6; anchors.rightMargin: 6
@@ -121,7 +123,7 @@ Rectangle {
         }
         HoverHandler { id: hovT }
         Rectangle {
-            visible: bar.active && bar.sel === -1
+            visible: bar.active && bar.sel === -2
             anchors.left: parent.left; anchors.leftMargin: 20
             anchors.verticalCenter: parent.verticalCenter
             width: 3; height: 16; radius: 2; color: Theme.cursor
@@ -135,26 +137,74 @@ Rectangle {
                 anchors.verticalCenter: parent.verticalCenter
                 name: "msgs"
                 color: threadsRow.primary ? Theme.bg
-                     : (threadsRow.isOpen || bar.sel === -1) ? Theme.fg : Theme.fg_muted
+                     : (threadsRow.isOpen || bar.sel === -2) ? Theme.fg : Theme.fg_muted
             }
             Text {
                 renderType: Text.NativeRendering
                 anchors.verticalCenter: parent.verticalCenter
                 text: "Threads"
                 color: threadsRow.primary ? Theme.bg
-                     : (threadsRow.isOpen || bar.sel === -1) ? Theme.fg : Theme.dimmedFg
+                     : (threadsRow.isOpen || bar.sel === -2) ? Theme.fg : Theme.dimmedFg
                 font.family: Theme.fontFamily; font.hintingPreference: Font.PreferNoHinting
                 font.pixelSize: 14
             }
         }
         TapHandler {
-            onTapped: { bar.sel = -1; Backend.selectThreads() }
+            onTapped: { bar.sel = -2; Backend.selectThreads() }
+        }
+    }
+
+    // pinned Calendar: merged agenda across accounts
+    Item {
+        id: calRow
+        anchors { top: threadsRow.bottom; left: parent.left; right: parent.right }
+        height: 42
+        readonly property bool isOpen: Backend.currentFolderId === "__calendar"
+        readonly property bool primary: bar.active && bar.sel === -1
+        Rectangle {
+            anchors.fill: parent
+            anchors.leftMargin: 6; anchors.rightMargin: 6
+            radius: height / 2
+            color: calRow.primary ? Theme.fg
+                 : (calRow.isOpen && !bar.active ? Qt.rgba(Theme.fg.r, Theme.fg.g, Theme.fg.b, 0.06)
+                           : hovC.hovered ? Qt.rgba(Theme.fg.r, Theme.fg.g, Theme.fg.b, 0.04) : "transparent")
+        }
+        HoverHandler { id: hovC }
+        Rectangle {
+            visible: bar.active && bar.sel === -1
+            anchors.left: parent.left; anchors.leftMargin: 20
+            anchors.verticalCenter: parent.verticalCenter
+            width: 3; height: 16; radius: 2; color: Theme.cursor
+        }
+        Row {
+            anchors.fill: parent
+            anchors.leftMargin: bar.active ? 36 : 18
+            spacing: 13
+            Icon {
+                width: 18; height: 18
+                anchors.verticalCenter: parent.verticalCenter
+                name: "calendar-days"
+                color: calRow.primary ? Theme.bg
+                     : (calRow.isOpen || bar.sel === -1) ? Theme.fg : Theme.fg_muted
+            }
+            Text {
+                renderType: Text.NativeRendering
+                anchors.verticalCenter: parent.verticalCenter
+                text: "Calendar"
+                color: calRow.primary ? Theme.bg
+                     : (calRow.isOpen || bar.sel === -1) ? Theme.fg : Theme.dimmedFg
+                font.family: Theme.fontFamily; font.hintingPreference: Font.PreferNoHinting
+                font.pixelSize: 14
+            }
+        }
+        TapHandler {
+            onTapped: { bar.sel = -1; Backend.selectCalendar() }
         }
     }
 
     ListView {
         id: list
-        anchors { top: threadsRow.bottom; topMargin: 2; left: parent.left; right: parent.right; bottom: parent.bottom }
+        anchors { top: calRow.bottom; topMargin: 2; left: parent.left; right: parent.right; bottom: parent.bottom }
         model: bar.visibleFolders
         clip: true
         spacing: 2

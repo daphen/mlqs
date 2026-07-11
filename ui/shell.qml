@@ -15,8 +15,9 @@ FloatingWindow {
     component CapGap: Item { width: 8; height: 1 }
 
     readonly property bool insertMode: (Backend.openConvId !== "" && conv.replyHasFocus)
-                                       || composer.visible || index.searchFocus
+                                       || composer.visible || eventComposer.visible || index.searchFocus
     property string pane: "index"   // "sidebar" | "index"
+    readonly property bool calPane: Backend.currentFolderId === "__calendar"
     property bool gPending: false
     property bool dPending: false
     // vim count prefix: digits accumulate, j/k consume ("8j")
@@ -45,9 +46,15 @@ FloatingWindow {
             MailIndex {
                 id: index
                 anchors.fill: parent
-                visible: Backend.openConvId === ""
-                active: win.pane === "index"
+                visible: Backend.openConvId === "" && !win.calPane
+                active: win.pane === "index" && !win.calPane
                 onSearchDone: keys.forceActiveFocus()
+            }
+            CalendarView {
+                id: calview
+                anchors.fill: parent
+                visible: win.calPane && Backend.openConvId === ""
+                active: win.pane === "index"
             }
             ConversationView {
                 id: conv
@@ -63,13 +70,18 @@ FloatingWindow {
     // picker-style scrim: dim the app while composing
     Rectangle {
         anchors.fill: parent
-        color: Theme.ink; opacity: composer.visible ? 0.5 : 0
+        color: Theme.ink; opacity: (composer.visible || eventComposer.visible) ? 0.5 : 0
         visible: opacity > 0
         Behavior on opacity { NumberAnimation { duration: 140 } }
     }
 
     MailComposer {
         id: composer
+        onClosed: keys.forceActiveFocus()
+    }
+
+    EventComposer {
+        id: eventComposer
         onClosed: keys.forceActiveFocus()
     }
 
@@ -119,7 +131,33 @@ FloatingWindow {
         }
 
         Row {
-            visible: !statusbar.inConv && index.visualMode
+            visible: !statusbar.inConv && win.calPane
+            anchors.right: parent.right; anchors.rightMargin: 14
+            anchors.verticalCenter: parent.verticalCenter
+            spacing: 6
+            KeyCap { anchors.verticalCenter: parent.verticalCenter; text: "j" }
+            KeyCap { anchors.verticalCenter: parent.verticalCenter; text: "k" }
+            CapLabel { anchors.verticalCenter: parent.verticalCenter; text: "move" }
+            CapGap {}
+            KeyCap { anchors.verticalCenter: parent.verticalCenter; text: "↵" }
+            CapLabel { anchors.verticalCenter: parent.verticalCenter; text: "join" }
+            CapGap {}
+            KeyCap { anchors.verticalCenter: parent.verticalCenter; text: "o" }
+            CapLabel { anchors.verticalCenter: parent.verticalCenter; text: "open" }
+            CapGap {}
+            KeyCap { anchors.verticalCenter: parent.verticalCenter; text: "y" }
+            KeyCap { anchors.verticalCenter: parent.verticalCenter; text: "m" }
+            KeyCap { anchors.verticalCenter: parent.verticalCenter; text: "x" }
+            CapLabel { anchors.verticalCenter: parent.verticalCenter; text: "rsvp" }
+            CapGap {}
+            KeyCap { anchors.verticalCenter: parent.verticalCenter; text: "n" }
+            CapLabel { anchors.verticalCenter: parent.verticalCenter; text: "event" }
+            CapGap {}
+            KeyCap { anchors.verticalCenter: parent.verticalCenter; text: "r" }
+            CapLabel { anchors.verticalCenter: parent.verticalCenter; text: "refresh" }
+        }
+        Row {
+            visible: !statusbar.inConv && index.visualMode && !win.calPane
             anchors.right: parent.right; anchors.rightMargin: 14
             anchors.verticalCenter: parent.verticalCenter
             spacing: 6
@@ -143,7 +181,7 @@ FloatingWindow {
             CapLabel { anchors.verticalCenter: parent.verticalCenter; text: "cancel" }
         }
         Row {
-            visible: !statusbar.inConv && !index.visualMode
+            visible: !statusbar.inConv && !index.visualMode && !win.calPane
             anchors.right: parent.right; anchors.rightMargin: 14
             anchors.verticalCenter: parent.verticalCenter
             spacing: 6
@@ -212,7 +250,7 @@ FloatingWindow {
         focus: true
 
         Keys.onPressed: e => {
-            if (composer.visible) return
+            if (composer.visible || eventComposer.visible) return
             const ctrl = e.modifiers & Qt.ControlModifier
             const inConv = Backend.openConvId !== ""
 
@@ -257,6 +295,35 @@ FloatingWindow {
                 e.accepted = true; return
             }
 
+            // calendar pane owns the right panel's keys
+            if (win.calPane && !inConv && win.pane === "index" && !ctrl) {
+                switch (e.key) {
+                case Qt.Key_J: calview.move(win.consumeCount()); break
+                case Qt.Key_K: calview.move(-win.consumeCount()); break
+                case Qt.Key_G:
+                    if (e.modifiers & Qt.ShiftModifier) calview.toEnd()
+                    else if (win.gPending) { win.gPending = false; calview.toTop() }
+                    else win.arm("g")
+                    break
+                case Qt.Key_Return:
+                case Qt.Key_Enter: calview.open(); break
+                case Qt.Key_O: calview.openBrowser(); break
+                case Qt.Key_Y: calview.rsvp("accepted"); break
+                case Qt.Key_M: calview.rsvp("tentative"); break
+                case Qt.Key_X: calview.rsvp("declined"); break
+                case Qt.Key_N: eventComposer.composeNew(); break
+                case Qt.Key_R: Backend.refreshAgenda(); break
+                case Qt.Key_H: win.pane = "sidebar"; break
+                default:
+                    if (e.key >= Qt.Key_0 && e.key <= Qt.Key_9) {
+                        const digit = e.key - Qt.Key_0
+                        if (digit !== 0 || win.pendingCount > 0) win.pendingCount = win.pendingCount * 10 + digit
+                    }
+                    e.accepted = true; return
+                }
+                e.accepted = true; return
+            }
+
             // pane focus
             if (ctrl && e.key === Qt.Key_H) { win.pane = "sidebar"; e.accepted = true; return }
             if (ctrl && e.key === Qt.Key_L) { win.pane = "index"; e.accepted = true; return }
@@ -266,7 +333,7 @@ FloatingWindow {
             if (ctrl && (e.key === Qt.Key_D || e.key === Qt.Key_U)) {
                 const d = e.key === Qt.Key_D ? 1 : -1
                 if (inConv) conv.scroll(d)
-                else if (win.pane === "index") index.page(d)
+                else if (win.pane === "index") (win.calPane ? calview : index).page(d)
                 e.accepted = true; return
             }
             if (ctrl) return
@@ -324,7 +391,14 @@ FloatingWindow {
                 } else win.arm("g")
                 break
             case Qt.Key_X:
-                if (!inConv) Backend.toggleStar(index.current())
+                if (inConv && conv.inviteMsg()) Backend.rsvpMail(conv.inviteMsg().id, "declined")
+                else if (!inConv) Backend.toggleStar(index.current())
+                break
+            case Qt.Key_Y:
+                if (inConv && conv.inviteMsg()) Backend.rsvpMail(conv.inviteMsg().id, "accepted")
+                break
+            case Qt.Key_M:
+                if (inConv && conv.inviteMsg()) Backend.rsvpMail(conv.inviteMsg().id, "tentative")
                 break
             case Qt.Key_E:
                 if (inConv) Backend.archiveConv(Backend.openConvId)

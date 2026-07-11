@@ -109,19 +109,33 @@ func (n *Notifier) handleClosed(sig *enotify.NotificationClosedSignal) {
 func (n *Notifier) Connected() bool { return n.conn != nil }
 
 func (n *Notifier) Notify(key, title, body string) {
+	n.NotifyWith(key, title, body, "mail-unread", []enotify.Action{
+		enotify.NewDefaultAction(""),
+		{Key: "read", Label: "Mark read"},
+	})
+}
+
+// NotifyEvent is the calendar-reminder shape: Join action, calendar icon.
+func (n *Notifier) NotifyEvent(key, title, body string) {
+	n.NotifyWith(key, title, body, "x-office-calendar", []enotify.Action{
+		enotify.NewDefaultAction(""),
+		{Key: "join", Label: "Join"},
+	})
+}
+
+// NotifyWith sends a notification with caller-chosen icon and actions —
+// calendar reminders carry a Join action instead of Mark read.
+func (n *Notifier) NotifyWith(key, title, body, icon string, actions []enotify.Action) {
 	if n.conn == nil {
-		exec.Command("notify-send", "-a", "mlqs", "-i", "mail-unread", title, body).Start()
+		exec.Command("notify-send", "-a", "mlqs", "-i", icon, title, body).Start()
 		return
 	}
 	note := enotify.Notification{
 		AppName:       "mlqs",
-		AppIcon:       "mail-unread",
+		AppIcon:       icon,
 		Summary:       title,
 		Body:          body,
-		Actions: []enotify.Action{
-			enotify.NewDefaultAction(""),
-			{Key: "read", Label: "Mark read"},
-		},
+		Actions:       actions,
 		ExpireTimeout: enotify.ExpireTimeoutSetByNotificationServer,
 	}
 	var id uint32

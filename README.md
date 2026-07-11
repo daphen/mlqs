@@ -32,6 +32,21 @@ nobody pays Google's verification fees:
 At consent time you'll see "Google hasn't verified this app" →
 Advanced → continue. That's the deal with the BYO model.
 
+## Calendar
+
+The daemon also speaks Google Calendar: a merged agenda across accounts
+(sidebar → Calendar), RSVP (`y`/`m`/`x`), event creation (`n` in the
+calendar pane, with optional Google Meet), invite RSVP straight from
+invitation emails, and a desktop notification 5 minutes before events
+with a Join action.
+
+Setup on top of the mail scopes:
+
+1. In the same Google Cloud project, enable the **Google Calendar API**
+   (APIs & Services → Library → Google Calendar API → Enable).
+2. Re-run consent for every account so the token gains the calendar
+   scope: `mlqs auth <name>`.
+
 ## Configure
 
 `~/.config/mlqs/accounts.json`:

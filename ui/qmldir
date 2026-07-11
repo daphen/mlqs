@@ -3,3 +3,5 @@ MailSidebar MailSidebar.qml
 MailIndex MailIndex.qml
 ConversationView ConversationView.qml
 MailComposer MailComposer.qml
+CalendarView CalendarView.qml
+EventComposer EventComposer.qml

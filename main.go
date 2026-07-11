@@ -28,6 +28,7 @@ import (
 	"mlqs/internal/cache"
 	"mlqs/internal/config"
 	"mlqs/internal/debuglog"
+	"mlqs/internal/gcal"
 	"mlqs/internal/gmail"
 	"mlqs/internal/imgcache"
 	"mlqs/internal/notify"
@@ -46,6 +47,10 @@ type daemon struct {
 	cfg       *config.Config
 	db        *cache.DB
 	providers map[string]provider.Provider // keyed by account name
+	cals      map[string]*gcal.Client      // keyed by account name
+
+	calMu       sync.Mutex
+	calNotified map[string]bool // event occurrence keys already reminded
 
 	mu    sync.Mutex
 	conns map[net.Conn]struct{}
@@ -105,6 +110,9 @@ type command struct {
 	ReplyTo string   `json:"replyTo"`
 	Conv    string   `json:"conv"`
 	Paths   []string `json:"paths"`
+	Start   string   `json:"start"`
+	End     string   `json:"end"`
+	Meet    bool     `json:"meet"`
 }
 
 func (d *daemon) serve(conn net.Conn) {
@@ -132,7 +140,8 @@ func (d *daemon) serve(conn net.Conn) {
 		switch cmd.Type {
 		case "ping":
 			d.sendTo(conn, map[string]any{"type": "pong"})
-		case "folders", "conversations", "conversation", "openhtml", "openatt", "search", "threads", "contacts", "markread", "star", "archive", "unarchive", "trash", "untrash", "send":
+		case "folders", "conversations", "conversation", "openhtml", "openatt", "search", "threads", "contacts", "markread", "star", "archive", "unarchive", "trash", "untrash", "send",
+			"agenda", "rsvp", "rsvpmail", "createevent":
 			go d.handle(conn, cmd)
 		default:
 			d.sendTo(conn, map[string]any{"type": "toast",
@@ -254,12 +263,19 @@ func (d *daemon) handle(conn net.Conn, cmd command) {
 					atts[i].ShownInline = true
 				}
 			}
+			hasInvite := false
+			for _, a := range m.Attachments {
+				if isICS(a) {
+					hasInvite = true
+				}
+			}
 			out = append(out, map[string]any{
 				"id": m.ID, "convId": m.ConvID, "from": m.From, "to": m.To, "cc": m.Cc,
 				"subject": m.Subject, "snippet": m.Snippet, "date": m.Date,
 				"unread": m.Unread, "starred": m.Starred, "attachments": atts,
-				"bodyRich": rich,
-				"hasHtml":  strings.TrimSpace(m.BodyHTML) != "",
+				"bodyRich":  rich,
+				"hasHtml":   strings.TrimSpace(m.BodyHTML) != "",
+				"hasInvite": hasInvite,
 			})
 		}
 		d.sendTo(conn, map[string]any{"type": "conversation", "account": cmd.Account,
@@ -448,7 +464,205 @@ func (d *daemon) handle(conn net.Conn, cmd command) {
 			return
 		}
 		d.sendTo(conn, map[string]any{"type": "sent", "account": cmd.Account, "conv": cmd.Conv})
+	case "agenda":
+		cal := d.cals[cmd.Account]
+		if cal == nil {
+			fail(fmt.Errorf("no calendar client (re-run: mlqs auth %s)", cmd.Account))
+			return
+		}
+		evs, err := d.agenda(ctx, cal)
+		if err != nil {
+			fail(err)
+			return
+		}
+		d.sendTo(conn, map[string]any{"type": "agenda", "account": cmd.Account, "events": evs})
+	case "rsvp":
+		// Folder carries the calendar id, Text the response status
+		cal := d.cals[cmd.Account]
+		if cal == nil {
+			fail(fmt.Errorf("no calendar client"))
+			return
+		}
+		if err := cal.RSVP(ctx, cmd.Folder, cmd.ID, cmd.Text); err != nil {
+			fail(err)
+			return
+		}
+		d.sendTo(conn, map[string]any{"type": "rsvped", "account": cmd.Account, "id": cmd.ID, "status": cmd.Text})
+	case "rsvpmail":
+		// ID = message id carrying a text/calendar attachment; the .ics UID
+		// resolves the event on the primary calendar, then a normal RSVP
+		cal := d.cals[cmd.Account]
+		if cal == nil {
+			fail(fmt.Errorf("no calendar client"))
+			return
+		}
+		msgs, err := p.GetConversation(ctx, cmd.Conv)
+		if err != nil {
+			fail(err)
+			return
+		}
+		uid := ""
+		for _, m := range msgs {
+			if m.ID != cmd.ID {
+				continue
+			}
+			for _, a := range m.Attachments {
+				if !isICS(a) {
+					continue
+				}
+				data, err := p.FetchAttachment(ctx, m.ID, a.ID)
+				if err != nil {
+					fail(err)
+					return
+				}
+				uid = gcal.ICSUID(data)
+			}
+		}
+		if uid == "" {
+			fail(fmt.Errorf("no invite found on message"))
+			return
+		}
+		ev, err := cal.FindByICalUID(ctx, "primary", uid)
+		if err != nil {
+			fail(err)
+			return
+		}
+		if err := cal.RSVP(ctx, ev.CalID, ev.ID, cmd.Text); err != nil {
+			fail(err)
+			return
+		}
+		d.sendTo(conn, map[string]any{"type": "rsvped", "account": cmd.Account, "id": cmd.ID, "status": cmd.Text})
+	case "createevent":
+		cal := d.cals[cmd.Account]
+		if cal == nil {
+			fail(fmt.Errorf("no calendar client"))
+			return
+		}
+		start, err := time.ParseInLocation("2006-01-02 15:04", cmd.Start, time.Local)
+		if err != nil {
+			fail(fmt.Errorf("bad start %q (want YYYY-MM-DD HH:MM)", cmd.Start))
+			return
+		}
+		end, err := time.ParseInLocation("2006-01-02 15:04", cmd.End, time.Local)
+		if err != nil {
+			fail(fmt.Errorf("bad end %q", cmd.End))
+			return
+		}
+		var atts []string
+		for _, a := range parseAddrs(cmd.To) {
+			atts = append(atts, a.Email)
+		}
+		ev, err := cal.Create(ctx, "primary", gcal.NewEvent{
+			Title: cmd.Subject, Location: cmd.Query, Notes: cmd.Body,
+			Start: start, End: end, Attendees: atts, Meet: cmd.Meet,
+		})
+		if err != nil {
+			fail(err)
+			return
+		}
+		d.sendTo(conn, map[string]any{"type": "eventcreated", "account": cmd.Account, "event": ev})
 	}
+}
+
+// agenda merges the next 14 days across the account's visible calendars.
+func (d *daemon) agenda(ctx context.Context, cal *gcal.Client) ([]gcal.Event, error) {
+	calendars, err := cal.Calendars(ctx)
+	if err != nil {
+		return nil, err
+	}
+	from := time.Now().Add(-2 * time.Hour)
+	to := time.Now().AddDate(0, 0, 14)
+	var mu sync.Mutex
+	var wg sync.WaitGroup
+	var out []gcal.Event
+	for _, c := range calendars {
+		wg.Add(1)
+		go func(id string) {
+			defer wg.Done()
+			evs, err := cal.Events(ctx, id, from, to)
+			if err != nil {
+				debuglog.API("agenda %s: %v", id, err)
+				return
+			}
+			mu.Lock()
+			out = append(out, evs...)
+			mu.Unlock()
+		}(c.ID)
+	}
+	wg.Wait()
+	// duplicates appear when an event lives on several visible calendars
+	seen := map[string]bool{}
+	var uniq []gcal.Event
+	for _, e := range out {
+		if seen[e.ICalUID+e.Start.String()] {
+			continue
+		}
+		seen[e.ICalUID+e.Start.String()] = true
+		uniq = append(uniq, e)
+	}
+	sortEvents(uniq)
+	return uniq, nil
+}
+
+func sortEvents(evs []gcal.Event) {
+	for i := 1; i < len(evs); i++ {
+		for j := i; j > 0 && evs[j].Start.Before(evs[j-1].Start); j-- {
+			evs[j], evs[j-1] = evs[j-1], evs[j]
+		}
+	}
+}
+
+func isICS(a provider.Attachment) bool {
+	return strings.Contains(strings.ToLower(a.MIME), "text/calendar") ||
+		strings.HasSuffix(strings.ToLower(a.Name), ".ics")
+}
+
+// calNotifyLoop reminds 5 minutes before events start, with a Join action
+// when the event carries a meet link. Declined events stay silent.
+func (d *daemon) calNotifyLoop(account string, cal *gcal.Client) {
+	for {
+		time.Sleep(60 * time.Second)
+		ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
+		evs, err := cal.Events(ctx, "primary", time.Now(), time.Now().Add(30*time.Minute))
+		cancel()
+		if err != nil {
+			debuglog.API("calnotify %s: %v", account, err)
+			continue
+		}
+		for _, e := range evs {
+			if e.AllDay || e.MyStatus == "declined" {
+				continue
+			}
+			lead := time.Until(e.Start)
+			if lead > 5*time.Minute || lead < -time.Minute {
+				continue
+			}
+			occ := account + "/" + e.ID + "/" + e.Start.Format(time.RFC3339)
+			d.calMu.Lock()
+			dup := d.calNotified[occ]
+			if !dup {
+				d.calNotified[occ] = true
+			}
+			d.calMu.Unlock()
+			if dup {
+				continue
+			}
+			key, _ := json.Marshal(map[string]string{"Cal": "1", "Link": firstNonEmpty(e.MeetLink, e.HTMLLink)})
+			body := e.Start.Format("15:04")
+			if e.Location != "" {
+				body += " · " + e.Location
+			}
+			body += "  (" + account + ")"
+			d.notifier.NotifyEvent(string(key), e.Title, body)
+		}
+	}
+}
+
+func firstNonEmpty(a, b string) string {
+	if a != "" {
+		return a
+	}
+	return b
 }
 
 // openMedia routes images to the family viewer (imv via media-viewer.sh,
@@ -561,11 +775,13 @@ func main() {
 	defer db.Close()
 
 	d := &daemon{
-		cfg:       cfg,
-		db:        db,
-		providers: map[string]provider.Provider{},
-		conns:     map[net.Conn]struct{}{},
-		notified:  map[string]string{},
+		cfg:         cfg,
+		db:          db,
+		providers:   map[string]provider.Provider{},
+		cals:        map[string]*gcal.Client{},
+		conns:       map[net.Conn]struct{}{},
+		notified:    map[string]string{},
+		calNotified: map[string]bool{},
 	}
 	if len(cfg.Accounts) == 0 {
 		log.Printf("no accounts configured — create %s", config.Path())
@@ -580,6 +796,7 @@ func main() {
 				continue
 			}
 			d.providers[a.Name] = gmail.New(ctx, ts)
+			d.cals[a.Name] = gcal.New(ctx, ts)
 			log.Printf("account %s (%s) ready", a.Name, a.Email)
 		default:
 			log.Printf("account %s: vendor %q not implemented yet", a.Name, a.Vendor)
@@ -590,9 +807,15 @@ func main() {
 	d.notifier = notify.New(func(key, action string) {
 		debuglog.Gen("notify action invoked (%s): %s", action, key)
 		var k struct {
-			A, ID, S string
+			A, ID, S, Cal, Link string
 		}
 		if err := json.Unmarshal([]byte(key), &k); err != nil {
+			return
+		}
+		if k.Cal != "" {
+			if k.Link != "" {
+				exec.Command("xdg-open", k.Link).Start()
+			}
 			return
 		}
 		if action == "read" {
@@ -614,6 +837,9 @@ func main() {
 
 	for name, p := range d.providers {
 		go d.syncLoop(name, p)
+		if cal := d.cals[name]; cal != nil {
+			go d.calNotifyLoop(name, cal)
+		}
 		// contacts cold-start: seed from sent mail when the store is empty
 		if len(d.db.QueryContacts(name, "", 1)) == 0 {
 			go func(name string, p provider.Provider) {

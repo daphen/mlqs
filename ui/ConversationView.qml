@@ -10,6 +10,13 @@ Rectangle {
     color: Theme.bg
     radius: Theme.radius
 
+    // the focused message when it carries an invite, else null
+    function inviteMsg() {
+        const i = list.currentIndex
+        const m = (i >= 0 && i < Backend.messages.length) ? Backend.messages[i] : null
+        return (m && m.hasInvite) ? m : null
+    }
+
     function move(d) {
         if (list.count === 0) return
         cancelHints()
@@ -393,6 +400,53 @@ Rectangle {
                     font.family: Theme.fontFamily; font.hintingPreference: Font.PreferNoHinting
                     font.pixelSize: 12
                     elide: Text.ElideRight
+                }
+
+                // calendar invite: RSVP straight from the mail (y / m / x on
+                // the focused message do the same via keys)
+                Row {
+                    visible: modelData.hasInvite === true
+                    spacing: 8
+                    Icon {
+                        width: 14; height: 14
+                        anchors.verticalCenter: parent.verticalCenter
+                        name: "calendar-days"
+                        color: Theme.fg_muted
+                    }
+                    Text {
+                        renderType: Text.NativeRendering
+                        anchors.verticalCenter: parent.verticalCenter
+                        text: "Invitation"
+                        color: Theme.fg_secondary
+                        font.family: Theme.fontFamily; font.pixelSize: 12; font.weight: 500
+                    }
+                    Repeater {
+                        model: [
+                            { label: "accept", status: "accepted", cap: "y" },
+                            { label: "maybe", status: "tentative", cap: "m" },
+                            { label: "decline", status: "declined", cap: "x" }
+                        ]
+                        Rectangle {
+                            required property var modelData
+                            readonly property string msgId: parent.parent.parent.modelData.id
+                            height: 22; radius: 11
+                            width: rsvpLbl.implicitWidth + 22
+                            anchors.verticalCenter: parent.verticalCenter
+                            color: rsvpHov.hovered ? Qt.rgba(Theme.fg.r, Theme.fg.g, Theme.fg.b, 0.08)
+                                 : Theme.mode === "light" ? Theme.bg : Theme.surface2
+                            border.width: 1; border.color: Theme.hairline
+                            HoverHandler { id: rsvpHov; cursorShape: Qt.PointingHandCursor }
+                            Text {
+                                id: rsvpLbl
+                                renderType: Text.NativeRendering
+                                anchors.centerIn: parent
+                                text: modelData.cap + "  " + modelData.label
+                                color: Theme.fg
+                                font.family: Theme.fontFamily; font.pixelSize: 11; font.weight: 500
+                            }
+                            TapHandler { onTapped: Backend.rsvpMail(msgId, modelData.status) }
+                        }
+                    }
                 }
 
                 // attachment chips — only cargo NOT already shown in the body

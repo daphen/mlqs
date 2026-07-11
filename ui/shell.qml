@@ -24,6 +24,13 @@ FloatingWindow {
     property int pendingCount: 0
     function consumeCount() { const n = pendingCount > 0 ? pendingCount : 1; pendingCount = 0; return n }
 
+    // choosing any folder/view — including by mouse in the sidebar — moves
+    // keyboard focus to the content pane
+    Connections {
+        target: Backend
+        function onCurrentFolderIdChanged() { if (Backend.currentFolderId !== "") win.pane = "index" }
+    }
+
     Timer { id: pendingReset; interval: 500; onTriggered: { win.gPending = false; win.dPending = false } }
     function arm(which) {
         if (which === "g") gPending = true; else dPending = true

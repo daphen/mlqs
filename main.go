@@ -645,17 +645,36 @@ func isICS(a provider.Attachment) bool {
 }
 
 // calNotifyLoop reminds 5 minutes before events start, with a Join action
-// when the event carries a meet link. Declined events stay silent.
+// when the event carries a meet link. Watches every visible calendar
+// (shared ones included); declined and all-day events stay silent.
 func (d *daemon) calNotifyLoop(account string, cal *gcal.Client) {
+	var calIDs []string
+	var lastList time.Time
 	for {
 		time.Sleep(60 * time.Second)
 		ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
-		evs, err := cal.Events(ctx, "primary", time.Now(), time.Now().Add(30*time.Minute))
-		cancel()
-		if err != nil {
-			debuglog.API("calnotify %s: %v", account, err)
-			continue
+		// the calendar list barely changes — refresh it every 15 minutes
+		if len(calIDs) == 0 || time.Since(lastList) > 15*time.Minute {
+			if cs, err := cal.Calendars(ctx); err == nil {
+				calIDs = calIDs[:0]
+				for _, c := range cs {
+					calIDs = append(calIDs, c.ID)
+				}
+				lastList = time.Now()
+			} else {
+				debuglog.API("calnotify %s: list: %v", account, err)
+			}
 		}
+		var evs []gcal.Event
+		for _, id := range calIDs {
+			es, err := cal.Events(ctx, id, time.Now(), time.Now().Add(30*time.Minute))
+			if err != nil {
+				debuglog.API("calnotify %s/%s: %v", account, id, err)
+				continue
+			}
+			evs = append(evs, es...)
+		}
+		cancel()
 		for _, e := range evs {
 			if e.AllDay || e.MyStatus == "declined" {
 				continue
@@ -664,7 +683,10 @@ func (d *daemon) calNotifyLoop(account string, cal *gcal.Client) {
 			if lead > 5*time.Minute || lead < -time.Minute {
 				continue
 			}
-			occ := account + "/" + e.ID + "/" + e.Start.Format(time.RFC3339)
+			// keyed on the event's iCalUID, not calendar/account: the same
+			// meeting on primary + a shared calendar (or both accounts)
+			// must remind exactly once
+			occ := e.ICalUID + "/" + e.Start.Format(time.RFC3339)
 			d.calMu.Lock()
 			dup := d.calNotified[occ]
 			if !dup {

@@ -12,7 +12,7 @@ Rectangle {
     anchors.centerIn: parent
     width: Math.min(parent.width - 120, 760)
     height: Math.min(parent.height - 100, 640)
-    radius: Theme.radius
+    radius: 24   // pickers are the modal reference
     color: Theme.bg_alt
     border.width: 1
     border.color: Qt.rgba(Theme.fg.r, Theme.fg.g, Theme.fg.b, Theme.mode === "light" ? 0.15 : 0.10)

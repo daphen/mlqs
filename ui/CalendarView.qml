@@ -89,7 +89,7 @@ Rectangle {
         id: card
         anchors { top: header.bottom; left: parent.left; right: parent.right; bottom: parent.bottom
                   topMargin: 6; leftMargin: 8; rightMargin: 14; bottomMargin: 14 }
-        radius: Theme.radius
+        radius: 24   // picker-grammar card
         color: Theme.bg
     }
 

@@ -8,7 +8,7 @@ import QsLib
 Rectangle {
     id: cv
     color: Theme.bg
-    radius: Theme.radius
+    radius: 24   // picker-grammar card
 
     function focusedMsg() {
         const i = list.currentIndex

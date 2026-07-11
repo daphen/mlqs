@@ -84,7 +84,10 @@ func Authorize(ctx context.Context, a config.Account) (*oauth2.Token, error) {
 	sb := make([]byte, 16)
 	rand.Read(sb)
 	state := hex.EncodeToString(sb)
-	url := conf.AuthCodeURL(state, oauth2.AccessTypeOffline, oauth2.S256ChallengeOption(verifier))
+	// login_hint pins the consent screen to the account being authorized —
+	// without it Google silently uses the browser's last-active session
+	url := conf.AuthCodeURL(state, oauth2.AccessTypeOffline, oauth2.S256ChallengeOption(verifier),
+		oauth2.SetAuthURLParam("login_hint", a.Email))
 
 	type result struct {
 		code string

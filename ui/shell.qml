@@ -192,9 +192,11 @@ FloatingWindow {
             KeyCap { anchors.verticalCenter: parent.verticalCenter; text: "k" }
             CapLabel { anchors.verticalCenter: parent.verticalCenter; text: "move" }
             CapGap {}
-            KeyCap { anchors.verticalCenter: parent.verticalCenter; text: "h" }
-            KeyCap { anchors.verticalCenter: parent.verticalCenter; text: "l" }
-            CapLabel { anchors.verticalCenter: parent.verticalCenter; text: "panel" }
+            KeyCap { anchors.verticalCenter: parent.verticalCenter; text: "i" }
+            KeyCap { anchors.verticalCenter: parent.verticalCenter; text: "t" }
+            KeyCap { anchors.verticalCenter: parent.verticalCenter; text: "c" }
+            KeyCap { anchors.verticalCenter: parent.verticalCenter; text: "s" }
+            CapLabel { anchors.verticalCenter: parent.verticalCenter; text: "jump" }
             CapGap {}
             KeyCap { anchors.verticalCenter: parent.verticalCenter; text: "↵" }
             CapLabel { anchors.verticalCenter: parent.verticalCenter; text: "open" }
@@ -319,6 +321,8 @@ FloatingWindow {
                     break
                 case Qt.Key_S: calview.cycleSpan(); break
                 case Qt.Key_R: Backend.refreshAgenda(); break
+                case Qt.Key_I: Backend.jumpRole("inbox"); break
+                case Qt.Key_T: Backend.selectThreads(); break
                 case Qt.Key_H: win.pane = "sidebar"; break
                 default:
                     if (e.key >= Qt.Key_0 && e.key <= Qt.Key_9) {
@@ -418,6 +422,13 @@ FloatingWindow {
                 break
             case Qt.Key_I:
                 if (inConv) conv.focusReply()
+                else { Backend.jumpRole("inbox"); win.pane = "index" }
+                break
+            case Qt.Key_T:
+                if (!inConv) { Backend.selectThreads(); win.pane = "index" }
+                break
+            case Qt.Key_S:
+                if (!inConv) { Backend.jumpRole("sent"); win.pane = "index" }
                 break
             case Qt.Key_A:
                 if (inConv) Backend.openConvId !== "" && (conv.replyAll = !conv.replyAll)
@@ -442,7 +453,7 @@ FloatingWindow {
                 composer.composeNew()
                 break
             case Qt.Key_C:
-                composer.composeNew()
+                if (!inConv) { Backend.selectCalendar(); win.pane = "index" }
                 break
             case Qt.Key_R:
                 // in a thread: R picks the focused message as reply target

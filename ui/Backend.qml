@@ -63,6 +63,12 @@ Singleton {
         send({ type: "folders", account: id })
     }
 
+    // single-key folder jumps (i inbox, s sent, …)
+    function jumpRole(role) {
+        const f = folders.find(f => f.role === role)
+        if (f) selectFolder(f.id, f.name)
+    }
+
     function selectThreads() {
         currentFolderId = "__threads"; currentFolderName = "Threads"
         convsModel.clear(); nextCursor = ""; pendingCursor = ""

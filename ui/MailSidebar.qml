@@ -14,6 +14,25 @@ Rectangle {
     opacity: active ? 1.0 : 0.8
     Behavior on opacity { NumberAnimation { duration: 120 } }
 
+    // gutter shortcut chip: these keys jump globally from normal mode
+    readonly property var roleKey: ({ inbox: "i", sent: "s" })
+    component JumpCap: Rectangle {
+        property string cap: ""
+        property bool onInk: false
+        visible: cap !== ""
+        width: 18; height: 18; radius: 5
+        color: "transparent"
+        border.width: 1
+        border.color: onInk ? Qt.rgba(Theme.bg.r, Theme.bg.g, Theme.bg.b, 0.35) : Theme.hairline
+        Text {
+            renderType: Text.NativeRendering
+            anchors.centerIn: parent
+            text: parent.cap
+            color: parent.onInk ? Theme.bg : Theme.fg_muted
+            font.family: Theme.fontFamily; font.pixelSize: 10; font.weight: 500
+        }
+    }
+
     // labels are clutter by default; the section header toggles
     property bool labelsCollapsed: true
     readonly property var roleIcon: ({
@@ -128,9 +147,15 @@ Rectangle {
             anchors.verticalCenter: parent.verticalCenter
             width: 3; height: 16; radius: 2; color: Theme.cursor
         }
+        JumpCap {
+            cap: "t"; onInk: threadsRow.primary
+            visible: !(bar.active && bar.sel === -2)
+            anchors.left: parent.left; anchors.leftMargin: 10
+            anchors.verticalCenter: parent.verticalCenter
+        }
         Row {
             anchors.fill: parent
-            anchors.leftMargin: bar.active ? 36 : 18
+            anchors.leftMargin: 36
             spacing: 13
             Icon {
                 width: 18; height: 18
@@ -176,9 +201,15 @@ Rectangle {
             anchors.verticalCenter: parent.verticalCenter
             width: 3; height: 16; radius: 2; color: Theme.cursor
         }
+        JumpCap {
+            cap: "c"; onInk: calRow.primary
+            visible: !(bar.active && bar.sel === -1)
+            anchors.left: parent.left; anchors.leftMargin: 10
+            anchors.verticalCenter: parent.verticalCenter
+        }
         Row {
             anchors.fill: parent
-            anchors.leftMargin: bar.active ? 36 : 18
+            anchors.leftMargin: 36
             spacing: 13
             Icon {
                 width: 18; height: 18
@@ -276,18 +307,13 @@ Rectangle {
             }
             HoverHandler { id: hov }
 
-            // relative number gutter (vim hybrid), focused-panel only
-            Text {
-                renderType: Text.NativeRendering
-                visible: bar.active && !row.cursor
-                anchors.left: parent.left; anchors.leftMargin: 12
-                width: 18; horizontalAlignment: Text.AlignRight
+            // gutter shows the folder's global jump key (i inbox, s sent)
+            JumpCap {
+                cap: bar.roleKey[modelData.role] || ""
+                onInk: row.primary
+                visible: !(bar.active && row.cursor)
+                anchors.left: parent.left; anchors.leftMargin: 10
                 anchors.verticalCenter: parent.verticalCenter
-                text: Math.abs(row.index - bar.sel)
-                color: Theme.fg; opacity: 0.65
-                font.family: Theme.fontFamily; font.hintingPreference: Font.PreferNoHinting
-                font.pixelSize: 12
-                font.features: ({ "tnum": 1 })
             }
             Rectangle {
                 visible: bar.active && row.cursor
@@ -298,7 +324,7 @@ Rectangle {
 
             Row {
                 anchors.fill: parent
-                anchors.leftMargin: bar.active ? 36 : 18
+                anchors.leftMargin: 36
                 anchors.rightMargin: 8 + (modelData.unread > 0 ? 38 : 0)
                 spacing: 13
                 Icon {

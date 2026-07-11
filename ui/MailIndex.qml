@@ -135,8 +135,8 @@ Rectangle {
         // pagination watches contentY so touchpad (native) scrolling loads too
         onContentYChanged: if (contentY + height > contentHeight - 800) Backend.loadMore()
 
-        // chat-client scroll feel: 5x MOUSE wheel gain (Qt's default is
-        // treacle); touchpads keep the Flickable's native inertia
+        // chat-client scroll feel: 5x mouse-wheel gain; touchpads get their
+        // own handler below (their deltas are fine-grained)
         property real scrollGain: 5.0
         WheelHandler {
             acceptedDevices: PointerDevice.Mouse
@@ -145,6 +145,17 @@ Rectangle {
                 list.contentY -= px * list.scrollGain
                 list.returnToBounds()
                 if (list.contentY + list.height > list.contentHeight - 800) Backend.loadMore()
+                e.accepted = true
+            }
+        }
+        WheelHandler {
+            acceptedDevices: PointerDevice.TouchPad
+            onWheel: e => {
+                // touchpads report fine-grained deltas: pass pixelDeltas near-raw,
+                // scale angleDeltas well past the mouse math (they arrive tiny)
+                const px = e.pixelDelta.y !== 0 ? e.pixelDelta.y * 2 : e.angleDelta.y * 1.25
+                list.contentY -= px
+                list.returnToBounds()
                 e.accepted = true
             }
         }

@@ -112,12 +112,22 @@ Rectangle {
                         elide: Text.ElideRight; width: Math.min(implicitWidth, 90)
                         horizontalAlignment: Text.AlignHCenter
                     }
-                    // unread dot on inactive accounts with inbox activity
+                    // inbox count on inactive accounts, riding the tab corner
                     Rectangle {
                         visible: !activeTab && tabUnread > 0
-                        anchors.right: parent.right; anchors.rightMargin: 2
-                        anchors.top: parent.top; anchors.topMargin: 2
-                        width: 8; height: 8; radius: 4; color: Theme.cursor
+                        anchors.right: parent.right; anchors.rightMargin: -5
+                        anchors.top: parent.top; anchors.topMargin: -5
+                        height: 15; width: Math.max(15, tabBadge.implicitWidth + 8)
+                        radius: 8; color: Theme.cursor
+                        Text {
+                            id: tabBadge
+                            renderType: Text.NativeRendering
+                            anchors.centerIn: parent
+                            text: tabUnread > 99 ? "99+" : tabUnread
+                            color: Theme.ink
+                            font.family: Theme.fontFamily; font.pixelSize: 10; font.weight: 600
+                            font.features: ({ "tnum": 1 })
+                        }
                     }
                     TapHandler { onTapped: Backend.selectAccount(modelData.id) }
                 }

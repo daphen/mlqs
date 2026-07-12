@@ -16,21 +16,14 @@ Rectangle {
 
     // gutter shortcut chip: these keys jump globally from normal mode
     readonly property var roleKey: ({ inbox: "i", sent: "s" })
-    component JumpCap: Rectangle {
+    component JumpCap: KeyCap {
         property string cap: ""
         property bool onInk: false
         visible: cap !== ""
-        width: 18; height: 18; radius: 5
-        color: "transparent"
-        border.width: 1
+        small: true; ghost: true
+        text: cap
         border.color: onInk ? Qt.rgba(Theme.bg.r, Theme.bg.g, Theme.bg.b, 0.35) : Theme.hairline
-        Text {
-            renderType: Text.NativeRendering
-            anchors.centerIn: parent
-            text: parent.cap
-            color: parent.onInk ? Theme.bg : Theme.fg_muted
-            font.family: Theme.fontFamily; font.pixelSize: 10; font.weight: 500
-        }
+        textColor: onInk ? Theme.bg : Theme.fg_muted
     }
 
     // labels are clutter by default; the section header toggles

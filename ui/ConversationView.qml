@@ -8,7 +8,7 @@ import QsLib
 Rectangle {
     id: cv
     color: Theme.bg
-    radius: 24   // picker-grammar card
+    radius: Theme.radiusCard
 
     function focusedMsg() {
         const i = list.currentIndex
@@ -284,27 +284,7 @@ Rectangle {
         boundsBehavior: Flickable.StopAtBounds
         highlightMoveDuration: 60
 
-        property real scrollGain: 5.0
-        WheelHandler {
-            acceptedDevices: PointerDevice.Mouse
-            onWheel: e => {
-                const px = (e.pixelDelta.y !== 0) ? e.pixelDelta.y : e.angleDelta.y / 8
-                list.contentY -= px * list.scrollGain
-                list.returnToBounds()
-                e.accepted = true
-            }
-        }
-        WheelHandler {
-            acceptedDevices: PointerDevice.TouchPad
-            onWheel: e => {
-                // this hardware reports junk-scaled pixelDeltas (1–5px/event);
-                // angleDelta is the real magnitude — measured gain, feels 1:1+
-                const px = e.angleDelta.y * 1.2
-                list.contentY -= px
-                list.returnToBounds()
-                e.accepted = true
-            }
-        }
+        ScrollFeel { flick: list }
 
         delegate: Rectangle {
             required property var modelData

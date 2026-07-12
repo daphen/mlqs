@@ -85,12 +85,10 @@ Rectangle {
         }
     }
 
-    Rectangle {
+    Card {
         id: card
         anchors { top: header.bottom; left: parent.left; right: parent.right; bottom: parent.bottom
                   topMargin: 6; leftMargin: 8; rightMargin: 14; bottomMargin: 14 }
-        radius: 24   // picker-grammar card
-        color: Theme.bg
     }
 
     ListView {
@@ -104,27 +102,7 @@ Rectangle {
         preferredHighlightEnd: height - 80
         highlightRangeMode: ListView.ApplyRange
 
-        property real scrollGain: 5.0
-        WheelHandler {
-            acceptedDevices: PointerDevice.Mouse
-            onWheel: e => {
-                const px = (e.pixelDelta.y !== 0) ? e.pixelDelta.y : e.angleDelta.y / 8
-                list.contentY -= px * list.scrollGain
-                list.returnToBounds()
-                e.accepted = true
-            }
-        }
-        WheelHandler {
-            acceptedDevices: PointerDevice.TouchPad
-            onWheel: e => {
-                // this hardware reports junk-scaled pixelDeltas (1–5px/event);
-                // angleDelta is the real magnitude — measured gain, feels 1:1+
-                const px = e.angleDelta.y * 1.2
-                list.contentY -= px
-                list.returnToBounds()
-                e.accepted = true
-            }
-        }
+        ScrollFeel { flick: list }
 
         section.property: "dayKey"
         section.delegate: Item {

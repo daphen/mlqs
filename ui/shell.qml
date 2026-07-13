@@ -209,7 +209,8 @@ FloatingWindow {
             KeyCap { anchors.verticalCenter: parent.verticalCenter; text: "k" }
             CapLabel { anchors.verticalCenter: parent.verticalCenter; text: "move" }
             CapGap {}
-            KeyCap { anchors.verticalCenter: parent.verticalCenter; text: "I·T·C·S" }
+            KeyCap { anchors.verticalCenter: parent.verticalCenter; text: "g" }
+            KeyCap { anchors.verticalCenter: parent.verticalCenter; text: "i·t·c·s·d" }
             CapLabel { anchors.verticalCenter: parent.verticalCenter; text: "goto" }
             CapGap {}
             KeyCap { anchors.verticalCenter: parent.verticalCenter; text: "↵" }
@@ -317,6 +318,29 @@ FloatingWindow {
                 e.accepted = true; return
             }
 
+            // g-prefix goto, case-sensitive: gg top · gi inbox · gI important
+            // · gt threads · gc calendar · gs sent · gS spam · gd drafts
+            if (win.gPending) {
+                win.gPending = false
+                const shifted = e.modifiers & Qt.ShiftModifier
+                const go = r => { Backend.jumpRole(r); win.pane = "index" }
+                switch (e.key) {
+                case Qt.Key_G:
+                    if (!shifted) {
+                        if (inConv) conv.toTop()
+                        else if (win.calPane) calview.toTop()
+                        else index.toTop()
+                        e.accepted = true; return
+                    }
+                    break
+                case Qt.Key_I: if (!inConv) { go(shifted ? "starred" : "inbox"); e.accepted = true; return } break
+                case Qt.Key_S: if (!inConv) { go(shifted ? "spam" : "sent"); e.accepted = true; return } break
+                case Qt.Key_D: if (!inConv) { go("drafts"); e.accepted = true; return } break
+                case Qt.Key_T: if (!inConv) { Backend.selectThreads(); win.pane = "index"; e.accepted = true; return } break
+                case Qt.Key_C: if (!inConv) { Backend.selectCalendar(); win.pane = "index"; e.accepted = true; return } break
+                }
+            }
+
             // calendar pane owns the right panel's keys
             if (win.calPane && !inConv && win.pane === "index" && !ctrl) {
                 switch (e.key) {
@@ -327,18 +351,6 @@ FloatingWindow {
                     else if (win.gPending) { win.gPending = false; calview.toTop() }
                     else win.arm("g")
                     break
-                case Qt.Key_I:
-                    if (e.modifiers & Qt.ShiftModifier) Backend.jumpRole("inbox")
-                    break
-                case Qt.Key_T:
-                    if (e.modifiers & Qt.ShiftModifier) Backend.selectThreads()
-                    break
-                case Qt.Key_D:
-                    if (e.modifiers & Qt.ShiftModifier) Backend.jumpRole("drafts")
-                    break
-                case Qt.Key_P:
-                    if (e.modifiers & Qt.ShiftModifier) Backend.jumpRole("spam")
-                    break
                 case Qt.Key_Return:
                 case Qt.Key_Enter: calview.open(); break
                 case Qt.Key_O: calview.openBrowser(); break
@@ -348,10 +360,7 @@ FloatingWindow {
                     if (e.modifiers & Qt.ShiftModifier) eventComposer.composeNew()
                     else calview.rsvp("declined")
                     break
-                case Qt.Key_S:
-                    if (e.modifiers & Qt.ShiftModifier) Backend.jumpRole("sent")
-                    else calview.cycleSpan()
-                    break
+                case Qt.Key_S: calview.cycleSpan(); break
                 case Qt.Key_R: Backend.refreshAgenda(); break
                 case Qt.Key_Q: win.visible = false; break
                 case Qt.Key_H: win.pane = "sidebar"; break
@@ -379,24 +388,6 @@ FloatingWindow {
             }
             if (ctrl) return
 
-            if (win.gPending && e.key === Qt.Key_G) {
-                win.gPending = false
-                if (inConv) conv.toTop(); else index.toTop()
-                e.accepted = true; return
-            }
-
-            // capital goto: I inbox · T threads · C calendar · S sent ·
-            // D drafts · P spam — one shifted keystroke from anywhere shallow
-            if (!inConv && (e.modifiers & Qt.ShiftModifier)) {
-                const jumps = ({ [Qt.Key_I]: "inbox", [Qt.Key_S]: "sent",
-                                 [Qt.Key_D]: "drafts", [Qt.Key_P]: "spam" })
-                if (jumps[e.key] !== undefined) {
-                    Backend.jumpRole(jumps[e.key]); win.pane = "index"
-                    e.accepted = true; return
-                }
-                if (e.key === Qt.Key_T) { Backend.selectThreads(); win.pane = "index"; e.accepted = true; return }
-                if (e.key === Qt.Key_C) { Backend.selectCalendar(); win.pane = "index"; e.accepted = true; return }
-            }
 
             // count prefix digits (0 only continues an existing count)
             if (e.key >= Qt.Key_0 && e.key <= Qt.Key_9) {

@@ -144,6 +144,9 @@ func (d *daemon) serve(conn net.Conn) {
 		switch cmd.Type {
 		case "ping":
 			d.sendTo(conn, map[string]any{"type": "pong"})
+		case "summonui":
+			// launch script pokes this; a hidden UI remaps itself
+			d.broadcast(map[string]any{"type": "summon"})
 		case "folders", "conversations", "conversation", "openhtml", "openatt", "search", "threads", "contacts", "markread", "star", "archive", "unarchive", "trash", "untrash", "send",
 			"agenda", "rsvp", "rsvpmail", "createevent", "calendars":
 			go d.handle(conn, cmd)

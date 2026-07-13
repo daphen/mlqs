@@ -15,13 +15,12 @@ FloatingWindow {
 
     component CapGap: Item { width: 8; height: 1 }
 
-    // warm-summon: the launch script calls this instead of cold-starting
-    // when a hidden instance is alive
-    IpcHandler {
-        target: "mail"
-        // "summon", not "show" — `qs ipc show` is a CLI builtin and shadows it
-        function summon(): void { win.visible = true }
-        function dismiss(): void { win.visible = false }
+    // warm-summon: the launch script pokes the daemon ("summonui"), which
+    // broadcasts to us — the hidden window remaps without a cold start.
+    // (qs ipc was unusable here: display filtering + CLI name collisions.)
+    Connections {
+        target: Backend
+        function onSummonRequested() { win.visible = true }
     }
 
     readonly property bool insertMode: (Backend.openConvId !== "" && conv.replyHasFocus)

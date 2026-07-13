@@ -44,6 +44,7 @@ Singleton {
 
     signal toast(string text)
     signal summonRequested()
+    signal dismissRequested()
     signal contactsResult(var items, string query)
     function queryContacts(q) { send({ type: "contacts", account: currentAccount, query: q }) }
 
@@ -480,6 +481,8 @@ Singleton {
             if (currentFolderId === "__calendar") refreshAgenda()
         } else if (e.type === "summon") {
             summonRequested()
+        } else if (e.type === "dismiss") {
+            dismissRequested()
         } else if (e.type === "toast") {
             if ((e.text || "").indexOf("mlqs send") === 0)
                 messages = messages.map(m => m.sending ? Object.assign({}, m, { sending: false, failed: true }) : m)

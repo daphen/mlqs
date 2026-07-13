@@ -21,6 +21,7 @@ FloatingWindow {
     Connections {
         target: Backend
         function onSummonRequested() { win.visible = true }
+        function onDismissRequested() { win.visible = false }
     }
 
     readonly property bool insertMode: (Backend.openConvId !== "" && conv.replyHasFocus)

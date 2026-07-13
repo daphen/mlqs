@@ -147,6 +147,8 @@ func (d *daemon) serve(conn net.Conn) {
 		case "summonui":
 			// launch script pokes this; a hidden UI remaps itself
 			d.broadcast(map[string]any{"type": "summon"})
+		case "dismissui":
+			d.broadcast(map[string]any{"type": "dismiss"})
 		case "folders", "conversations", "conversation", "openhtml", "openatt", "search", "threads", "contacts", "markread", "star", "archive", "unarchive", "trash", "untrash", "send",
 			"agenda", "rsvp", "rsvpmail", "createevent", "calendars":
 			go d.handle(conn, cmd)

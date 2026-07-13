@@ -26,7 +26,11 @@ Rectangle {
     function move(d) {
         if (list.count === 0) return
         cancelHints()
-        list.currentIndex = Math.max(0, Math.min(list.count - 1, list.currentIndex + d))
+        const ni = Math.max(0, Math.min(list.count - 1, list.currentIndex + d))
+        // already at the edge: repositioning would snap a long message back
+        // to its own top — the reading loop bug
+        if (ni === list.currentIndex) return
+        list.currentIndex = ni
         // scroll only when the target's start is off-screen — a focus move
         // between visible messages must not shift the view
         const it = list.itemAtIndex(list.currentIndex)

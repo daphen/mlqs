@@ -661,7 +661,7 @@ func isICS(a provider.Attachment) bool {
 		strings.HasSuffix(strings.ToLower(a.Name), ".ics")
 }
 
-// calNotifyLoop reminds 5 minutes before events start, with a Join action
+// calNotifyLoop reminds 10 minutes before events start, with a Join action
 // when the event carries a meet link. Watches every visible calendar
 // (shared ones included); declined and all-day events stay silent.
 func (d *daemon) calNotifyLoop(account string, cal provider.CalendarProvider) {
@@ -697,7 +697,7 @@ func (d *daemon) calNotifyLoop(account string, cal provider.CalendarProvider) {
 				continue
 			}
 			lead := time.Until(e.Start)
-			if lead > 5*time.Minute || lead < -time.Minute {
+			if lead > 10*time.Minute || lead < -time.Minute {
 				continue
 			}
 			// keyed on the event's iCalUID, not calendar/account: the same

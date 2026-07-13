@@ -13,6 +13,47 @@ Sibling of [slqs](https://github.com/daphen/slqs) (Slack) and dsqrd (Discord).
 
 ## Requirements
 
+Everything ships in the nix flake: the Go daemon, quickshell, and a
+vendored copy of the QsLib UI kit (components, icons, and a default
+theme) under `ui/vendor/`. There are no other runtime dependencies —
+`nix profile install github:daphen/mlqs` (or the flake-input route
+below) is the whole install.
+
+If you keep your own QsLib at `~/.local/share/qml/QsLib` it takes
+precedence over the vendored copy — that's how the author's live
+design system plugs in.
+
+## Two accounts, two vendors (typical setup)
+
+Personal Gmail + work Microsoft 365 in one client:
+
+```json
+{
+  "accounts": [
+    { "name": "personal", "vendor": "gmail",
+      "email": "you@gmail.com",
+      "credentials_file": "~/.config/mlqs/google-client.json" },
+    { "name": "work", "vendor": "outlook",
+      "email": "you@company.com",
+      "client_id": "<azure-application-client-id>" }
+  ]
+}
+```
+
+Set up the Google OAuth client (section below), register the Azure app
+(Outlook section below), then authorize each account in turn:
+
+```
+mlqs auth personal
+mlqs auth work
+```
+
+Each opens a browser consent pinned to that account. Both mailboxes,
+both calendars, and cross-account agenda/reminders then work out of
+the box; tabs at the top-left switch accounts (ctrl+s cycles).
+
+## Details
+
 - Linux + Wayland, [quickshell](https://quickshell.org)
 - Nix (recommended) or Go 1.26+
 - A Google account and ~10 minutes of OAuth console clicking (below)

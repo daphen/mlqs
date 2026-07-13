@@ -795,6 +795,11 @@ func openMedia(path string) {
 		if viewer == "" {
 			viewer = filepath.Join(os.Getenv("HOME"), ".config", "endcord", "media-viewer.sh")
 		}
+		if _, err := os.Stat(viewer); err != nil {
+			// no family viewer on this machine — plain xdg-open works fine
+			exec.Command("xdg-open", path).Start()
+			return
+		}
 		exec.Command(viewer, path, "img").Start()
 	default:
 		exec.Command("xdg-open", path).Start()

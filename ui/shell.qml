@@ -105,6 +105,8 @@ FloatingWindow {
     CheatSheet {
         id: cheatSheet
         z: 100
+        // hand the keyboard back to the shell when it closes
+        onShownChanged: if (!shown) keys.forceActiveFocus()
     }
 
     FeedbackPill {
@@ -311,14 +313,8 @@ FloatingWindow {
             const ctrl = e.modifiers & Qt.ControlModifier
             const inConv = Backend.openConvId !== ""
 
-            // cheat sheet swallows the keyboard while open; esc or ? dismisses
-            if (cheatSheet.shown) {
-                if (e.key === Qt.Key_Escape || e.key === Qt.Key_Question)
-                    cheatSheet.shown = false
-                e.accepted = true; return
-            }
-            // ? opens the reference from any non-insert mode (search owns focus
-            // when active, so it never steals a typed "?")
+            // ? opens the reference; once open it grabs its own keyboard focus
+            // (for / search) and handles esc/?/close itself — see CheatSheet.qml.
             if (e.key === Qt.Key_Question) {
                 cheatSheet.shown = true; e.accepted = true; return
             }

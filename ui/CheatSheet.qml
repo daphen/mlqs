@@ -39,11 +39,13 @@ Item {
         { title: "Conversation", rows: [
             [["j"], "Scroll down"], [["k"], "Scroll up"],
             [["⇧j"], "Next message"], [["⇧k"], "Previous message"],
+            [["↵"], "Cursor in message"], [["v"], "Visual select in message"],
+            [["y"], "Yank hints (invites: accept)"], [["⇧y"], "Copy whole message"],
+            [["m"], "RSVP tentative"], [["n"], "RSVP decline"],
             [["i"], "Reply"], [["a"], "Toggle reply-all"], [["r"], "Reply to focused"],
             [["⇧f"], "Forward"], [["f"], "Link hints"], [["o"], "Open in browser"],
-            [["y"], "RSVP accept"], [["m"], "RSVP tentative"], [["n"], "RSVP decline"],
-            [["↵"], "Cursor in message"],
-            [["e"], "Archive"], [["d", "d"], "Trash"], [["h"], "Close"],
+            [["e"], "Archive"], [["d", "d"], "Trash"],
+            [["h"], "Close"], [["q"], "Back to inbox"],
         ]},
         { title: "Visual — index", rows: [
             [["j", "k"], "Extend selection"], [["e"], "Archive selection"],
@@ -62,6 +64,11 @@ Item {
             [["y"], "Yank selection / image / token hints"],
             [["y", "y"], "Copy whole message"], [["⇧y"], "Copy whole message"],
             [["esc"], "Drop selection / back"],
+        ]},
+        { title: "Yank mode", rows: [
+            [["a", "s", "d", "…"], "Pick a label to copy it"],
+            [["y"], "Copy whole message"],
+            [["esc"], "Cancel"],
         ]},
         { title: "Calendar", rows: [
             [["j", "k"], "Move"], [["↵"], "Open event"], [["o"], "Open in browser"],

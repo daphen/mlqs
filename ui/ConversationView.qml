@@ -1365,6 +1365,7 @@ Rectangle {
                     }
                     Item {
                         readonly property bool on: !!cv.pickFlash && dl.index === cv.pickFlashIndex
+                        z: 5
                         property var r: null
                         onOnChanged: if (on) r = cv.pickFlash
                         opacity: on ? 1 : 0
@@ -1392,6 +1393,8 @@ Rectangle {
                             id: yankCap
                             required property var modelData
                             readonly property bool dim: cv.yankBuf !== "" && modelData.label.indexOf(cv.yankBuf) !== 0
+                            readonly property bool picked: !!cv.pickFlash && modelData.label === cv.yankBuf
+                            opacity: picked ? 0 : 1
                             readonly property bool onImage: modelData.kind === "img"
                             x: modelData.x
                             y: modelData.y + (modelData.h - height) / 2
@@ -1534,6 +1537,7 @@ Rectangle {
 
                     Item {
                         readonly property bool on: !!cv.pickFlash && dl.index === cv.pickFlashIndex
+                        z: 5
                         property var r: null
                         onOnChanged: if (on) r = cv.pickFlash
                         opacity: on ? 1 : 0
@@ -1562,6 +1566,8 @@ Rectangle {
                             id: gYankCap
                             required property var modelData
                             readonly property bool dim: cv.yankBuf !== "" && modelData.label.indexOf(cv.yankBuf) !== 0
+                            readonly property bool picked: !!cv.pickFlash && modelData.label === cv.yankBuf
+                            opacity: picked ? 0 : 1
                             readonly property bool onImage: modelData.kind === "img"
                             x: modelData.x
                             y: modelData.y + (modelData.h - height) / 2

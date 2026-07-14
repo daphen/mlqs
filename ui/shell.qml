@@ -126,6 +126,7 @@ FloatingWindow {
         readonly property bool inConv: Backend.openConvId !== ""
 
         Row {
+            id: leftStatus
             anchors.left: parent.left; anchors.leftMargin: 14
             anchors.verticalCenter: parent.verticalCenter
             spacing: 10
@@ -154,6 +155,7 @@ FloatingWindow {
 
         Row {
             visible: !statusbar.inConv && win.calPane
+            opacity: (statusbar.width - leftStatus.width - implicitWidth - 56) >= 0 ? 1 : 0
             anchors.right: parent.right; anchors.rightMargin: 14
             anchors.verticalCenter: parent.verticalCenter
             spacing: 6
@@ -183,6 +185,7 @@ FloatingWindow {
         }
         Row {
             visible: !statusbar.inConv && index.visualMode && !win.calPane
+            opacity: (statusbar.width - leftStatus.width - implicitWidth - 56) >= 0 ? 1 : 0
             anchors.right: parent.right; anchors.rightMargin: 14
             anchors.verticalCenter: parent.verticalCenter
             spacing: 6
@@ -207,6 +210,7 @@ FloatingWindow {
         }
         Row {
             visible: !statusbar.inConv && !index.visualMode && !win.calPane
+            opacity: (statusbar.width - leftStatus.width - implicitWidth - 56) >= 0 ? 1 : 0
             anchors.right: parent.right; anchors.rightMargin: 14
             anchors.verticalCenter: parent.verticalCenter
             spacing: 6
@@ -245,6 +249,7 @@ FloatingWindow {
         }
         Row {
             visible: statusbar.inConv
+            opacity: (statusbar.width - leftStatus.width - implicitWidth - 56) >= 0 ? 1 : 0
             anchors.right: parent.right; anchors.rightMargin: 14
             anchors.verticalCenter: parent.verticalCenter
             spacing: 6

@@ -6,7 +6,12 @@ import QsLib
 Rectangle {
     id: idx
     signal searchDone()
-    function focusSearch() { sInput.forceActiveFocus() }
+    function focusSearch() {
+        // scroll home so the field connects with the top of the results
+        list.positionViewAtBeginning()
+        list.currentIndex = 0
+        sInput.forceActiveFocus()
+    }
     readonly property bool searchFocus: sInput.activeFocus
     // header sits on the window canvas; the list floats below as a card
     color: "transparent"
@@ -72,13 +77,21 @@ Rectangle {
         Rectangle {
             anchors.horizontalCenter: parent.horizontalCenter
             anchors.verticalCenter: parent.verticalCenter
-            width: 230; height: 30; radius: 15
+            width: 320; height: 36; radius: 18
             color: Theme.mode === "light" ? Theme.bg : Theme.surface2
             border.width: 1
             border.color: sInput.activeFocus ? Theme.fg_muted : Theme.hairlineSoft
+            Icon {
+                anchors.left: parent.left; anchors.leftMargin: 12
+                anchors.verticalCenter: parent.verticalCenter
+                width: 14; height: 14
+                name: "magnifier"
+                fill: "outline"
+                color: sInput.activeFocus ? Theme.fg : Theme.fg_muted
+            }
             TextField {
                 id: sInput
-                anchors.fill: parent; anchors.leftMargin: 12
+                anchors.fill: parent; anchors.leftMargin: 34
                 verticalAlignment: TextInput.AlignVCenter
                 topPadding: 0; bottomPadding: 0
                 color: Theme.fg; background: null
@@ -97,7 +110,7 @@ Rectangle {
             // the family keycap for the / bind, right-aligned in the pill
             Rectangle {
                 visible: !sInput.activeFocus
-                anchors.right: parent.right; anchors.rightMargin: 5
+                anchors.right: parent.right; anchors.rightMargin: 9
                 anchors.verticalCenter: parent.verticalCenter
                 width: 20; height: 20; radius: 6
                 color: Theme.mode === "light" ? Theme.bg : Theme.surface2
@@ -117,11 +130,17 @@ Rectangle {
         id: card
         anchors { top: header.bottom; left: parent.left; right: parent.right; bottom: parent.bottom
                   topMargin: 6; leftMargin: 8; rightMargin: 14; bottomMargin: 14 }
+        // concentric with the row pills: pill radius (58/2 = 29) + 14px inset
+        radius: 43
+        border.width: 1
+        border.color: Theme.hairlineSoft
     }
 
     ListView {
         id: list
-        anchors { fill: card; topMargin: 8; bottomMargin: 8 }
+        // 11 + the pill's own 3px margin = 14, matching the side inset so the
+        // card corner stays concentric with the pills on both axes
+        anchors { fill: card; topMargin: 11; bottomMargin: 11 }
         model: Backend.convs
         clip: true
         boundsBehavior: Flickable.StopAtBounds
@@ -156,8 +175,8 @@ Rectangle {
             // card, read sits as a faint tint, visual selection inverts to ink
             Rectangle {
                 anchors.fill: parent
-                anchors.leftMargin: idx.active ? 36 : 8
-                anchors.rightMargin: 8
+                anchors.leftMargin: idx.active ? 42 : 14
+                anchors.rightMargin: 14
                 anchors.topMargin: 3; anchors.bottomMargin: 3
                 radius: height / 2
                 color: row.sel ? Theme.fg

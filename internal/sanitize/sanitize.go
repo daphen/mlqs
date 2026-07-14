@@ -17,6 +17,7 @@ import (
 
 var (
 	reEmptyA     = regexp.MustCompile(`(?i)<a[^>]*>(\s|&nbsp;|\x{00a0}|<br\s*/?>)*</a>`)
+	reUnderline  = regexp.MustCompile(`(?i)</?u>`)
 	// (\s[^>]*)? not [^>]*: a bare [^>]* lets "i" swallow <img> and "b" <br>,
 	// scrubbing every sized inline image as an "empty block"
 	reEmptyBlock = regexp.MustCompile(`(?i)<(div|p|span|b|i|h3)(\s[^>]*)?>(\s|&nbsp;|\x{00a0}|<br\s*/?>)*</(div|p|span|b|i|h3)>`)
@@ -252,7 +253,11 @@ func render(n *xhtml.Node, b *strings.Builder) {
 				children(n, b)
 				b.WriteString("</a>")
 			} else {
-				children(n, b)
+				// dead link (js/in-page href): strip the underline too, so it
+				// stops masquerading as clickable
+				var tb strings.Builder
+				children(n, &tb)
+				b.WriteString(reUnderline.ReplaceAllString(tb.String(), ""))
 			}
 		case "b", "strong":
 			wrap(n, b, "b")
@@ -345,8 +350,21 @@ func imgHTML(n *xhtml.Node) string {
 		}
 		return out + ">"
 	}
-	if alt := strings.TrimSpace(attr(n, "alt")); alt != "" {
-		return "<i>" + stdhtml.EscapeString(alt) + "</i>"
+	if alt := strings.TrimSpace(attr(n, "alt")); alt != "" && !junkAlt(alt) {
+		return `<i><font color="#909090">` + stdhtml.EscapeString(alt) + `</font></i>`
 	}
 	return ""
+}
+
+// junkAlt: placeholder/filename-ish alt texts ("Logo", "product_image", "☆")
+// read as noise when their image is gone; only descriptive alts are worth
+// showing. Nulling them also collapses image-only anchors (reEmptyA).
+func junkAlt(alt string) bool {
+	if len([]rune(alt)) <= 2 {
+		return true
+	}
+	if !strings.Contains(alt, " ") {
+		return true
+	}
+	return false
 }

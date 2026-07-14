@@ -25,7 +25,10 @@
 
       client = pkgs.writeShellApplication {
         name = "mlqs-client";
-        runtimeInputs = [ daemon pkgs.quickshell pkgs.procps pkgs.coreutils pkgs.xdg-utils pkgs.wl-clipboard ];
+        # imagemagick: image yanks are png-normalized; python3: rich yank
+        # inlines images as data URIs; util-linux: setsid-detached wl-copy
+        runtimeInputs = [ daemon pkgs.quickshell pkgs.procps pkgs.coreutils pkgs.xdg-utils
+                          pkgs.wl-clipboard pkgs.imagemagick pkgs.python3 pkgs.util-linux ];
         text = ''
           # QsLib resolution: a locally-managed design system (dotfiles) wins;
           # everyone else falls back to the vendored snapshot in the package

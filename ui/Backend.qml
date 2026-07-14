@@ -71,9 +71,52 @@ Singleton {
     // ⌃⇧r: force an update check now; the daemon toasts the result.
     function checkForUpdates() { toast("Checking for updates…"); send({ type: "checkupdate" }) }
 
+    // copy feedback is visual (row flash + bar morph, slqs grammar) — no toast
+    property double copyPulse: 0
+    function copyToClipboard(t) {
+        if (!t || !t.length) { toast("nothing to copy"); return }
+        Quickshell.execDetached(["wl-copy", "--", t])
+        copyPulse = Date.now()
+    }
+
+    // rich yank: file:// imgs become base64 data URIs so a paste into a
+    // rich editor (gmail, slack) carries the images along
+    readonly property string _inlineImgsPy:
+        "import sys,base64,re,mimetypes\n" +
+        "h=sys.stdin.read()\n" +
+        "def r(m):\n" +
+        "    p=m.group(1)\n" +
+        "    mt=mimetypes.guess_type(p)[0] or 'image/png'\n" +
+        "    try: d=base64.b64encode(open(p,'rb').read()).decode()\n" +
+        "    except Exception: return m.group(0)\n" +
+        "    return 'src=\"data:'+mt+';base64,'+d+'\"'\n" +
+        "sys.stdout.write(re.sub(r'src=\"file://([^\"]+)\"', r, h))\n"
+    function copyRichToClipboard(html) {
+        if (!html || !html.length) { toast("nothing to copy"); return }
+        Quickshell.execDetached(["setsid", "-f", "sh", "-c",
+            'printf %s "$1" | python3 -c "$2" | wl-copy -t text/html', "_",
+            html, _inlineImgsPy])
+        copyPulse = Date.now()
+    }
+
+    function copyImageToClipboard(src) {
+        let path = src
+        if (path.indexOf("file://") === 0) path = path.slice(7)
+        // always offer PNG: clipse (history) classifies images by PNG magic
+        // bytes, and png pastes everywhere — magick converts the rest
+        const ext = path.split(".").pop().toLowerCase()
+        const cmd = ext === "png"
+            ? 'wl-copy -t image/png < "' + path + '"'
+            : 'magick "' + path + '" png:- | wl-copy -t image/png'
+        Quickshell.execDetached(["setsid", "-f", "sh", "-c", cmd])
+        copyPulse = Date.now()
+    }
+
     function selectAccount(id) {
         currentAccount = id
-        folders = []; convsModel.clear(); messages = []
+        // keep the stale folder list rendered until the new one lands —
+        // blanking it collapses the sidebar for a frame (the account-switch jump)
+        convsModel.clear(); messages = []
         openConvId = ""; currentFolderId = ""
         send({ type: "folders", account: id })
     }
@@ -418,8 +461,19 @@ Singleton {
                 accountUnread = m
             }
             if (e.account !== currentAccount) return
+            // deterministic order: the daemon may deliver cached + fresh lists
+            // with different ordering, which reads as the sidebar reshuffling
+            const roleOrder = { inbox: 0, starred: 1, important: 2, sent: 3,
+                                drafts: 4, spam: 5, trash: 6, archive: 7 }
             folders = (e.folders || []).map(f =>
                 Object.assign({}, f, { section: f.role === "label" ? "labels" : "mailbox" }))
+                .sort((a, b) => {
+                    if (a.section !== b.section) return a.section === "mailbox" ? -1 : 1
+                    const ra = roleOrder[a.role] !== undefined ? roleOrder[a.role] : 50
+                    const rb = roleOrder[b.role] !== undefined ? roleOrder[b.role] : 50
+                    if (ra !== rb) return ra - rb
+                    return (a.name || "").localeCompare(b.name || "")
+                })
             if (currentFolderId === "") {
                 const inbox = folders.find(f => f.role === "inbox")
                 if (inbox) _loadFolder(inbox.id, inbox.name)
@@ -431,7 +485,8 @@ Singleton {
             if (e.cached) {
                 // warm-start paint: fill instantly, but never overwrite a live
                 // result that already landed for this folder (races the fetch)
-                if (pendingCursor === "" && _freshFolder !== currentFolderId) {
+                if (pendingCursor === "" && (convsModel.count === 0
+                        || _freshFolder !== currentAccount + "/" + currentFolderId)) {
                     convsModel.clear()
                     for (const c of items) if (findRow(c.id) < 0) convsModel.append(toRow(c))
                     loadingConvs = false
@@ -440,7 +495,7 @@ Singleton {
             }
             // live result — authoritative; replaces the cached paint
             loadingConvs = false
-            _freshFolder = currentFolderId
+            _freshFolder = currentAccount + "/" + currentFolderId
             if (pendingCursor !== "") pendingCursor = ""
             else convsModel.clear()
             // later pages can overlap the stitched unread block — dedup

@@ -69,6 +69,13 @@ Rectangle {
         toField.input.forceActiveFocus()
     }
 
+    // mailto: from a message body — recipient prefilled, cursor on subject
+    function composeTo(addr) {
+        composeNew()
+        toField.text = addr
+        subjField.input.forceActiveFocus()
+    }
+
     // forward a message: daemon quotes the original + re-attaches its files
     function forward(m) {
         if (!m || !m.id) return

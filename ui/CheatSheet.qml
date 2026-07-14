@@ -42,12 +42,26 @@ Item {
             [["i"], "Reply"], [["a"], "Toggle reply-all"], [["r"], "Reply to focused"],
             [["⇧f"], "Forward"], [["f"], "Link hints"], [["o"], "Open in browser"],
             [["y"], "RSVP accept"], [["m"], "RSVP tentative"], [["n"], "RSVP decline"],
+            [["↵"], "Cursor in message"],
             [["e"], "Archive"], [["d", "d"], "Trash"], [["h"], "Close"],
         ]},
-        { title: "Visual", rows: [
+        { title: "Visual — index", rows: [
             [["j", "k"], "Extend selection"], [["e"], "Archive selection"],
             [["d"], "Trash selection"], [["r"], "Mark read"], [["x"], "Star"],
             [["⌃d", "⌃u"], "Half-page (extends)"], [["esc"], "Exit"],
+        ]},
+        { title: "Message cursor", rows: [
+            [["↵"], "Enter message (auto if single)"],
+            [["h", "l"], "Char left / right"], [["j", "k"], "Line down / up (counts: 12j)"],
+            [["w", "b", "e"], "Word forward / back / end"],
+            [["⇧w", "⇧b", "⇧e"], "WORD (whitespace-delimited)"],
+            [["0", "^", "$"], "Line start / first char / end"], [["g", "⇧g"], "Text start / end"],
+            [["v"], "Visual select"], [["⇧v"], "Line select"],
+            [["⌃d", "⌃u"], "Half-page cursor move"], [["⌃e", "⌃y"], "Scroll view"],
+            [["o"], "Swap anchor / cursor"],
+            [["y"], "Yank selection / image / token hints"],
+            [["y", "y"], "Copy whole message"], [["⇧y"], "Copy whole message"],
+            [["esc"], "Drop selection / back"],
         ]},
         { title: "Calendar", rows: [
             [["j", "k"], "Move"], [["↵"], "Open event"], [["o"], "Open in browser"],

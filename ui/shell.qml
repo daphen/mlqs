@@ -80,6 +80,7 @@ FloatingWindow {
                 anchors.rightMargin: 12; anchors.bottomMargin: 12
                 visible: Backend.openConvId !== ""
                 onExitInsert: keys.forceActiveFocus()
+                onMailtoRequested: addr => composer.composeTo(addr)
             }
         }
     }
@@ -133,10 +134,22 @@ FloatingWindow {
             Rectangle {
                 width: modeLabel.implicitWidth + 16; height: 22; radius: 7
                 anchors.verticalCenter: parent.verticalCenter
-                color: win.insertMode ? Theme.cursor : index.visualMode ? Theme.sky : Theme.green
+                // READ = conv open but no cursor in the text (idle scroll state)
+                readonly property string modeName: win.insertMode ? "INSERT"
+                    : statusbar.inConv
+                        ? (conv.yanking ? "YANK"
+                           : conv.anchored ? (conv.linewise ? "V·LINE" : "VISUAL")
+                           : conv.cursorMode ? "NORMAL"
+                           : Backend.messages.length > 1 ? "READ" : "NORMAL")
+                        : (index.visualMode ? "VISUAL" : "NORMAL")
+                color: modeName === "INSERT" ? Theme.cursor
+                     : modeName === "NORMAL" ? Theme.green
+                     : modeName === "READ" ? Theme.surface3
+                     : modeName === "YANK" ? Theme.red
+                     : Theme.sky
                 Text { renderType: Text.NativeRendering
                     id: modeLabel; anchors.centerIn: parent
-                    text: win.insertMode ? "INSERT" : index.visualMode ? "VISUAL" : "NORMAL"
+                    text: parent.modeName
                     color: (parent.color.r * 0.299 + parent.color.g * 0.587 + parent.color.b * 0.114) > 0.5 ? Theme.ink : Theme.brightWhite
                     font.family: Theme.fontFamily; font.hintingPreference: Font.PreferNoHinting
                     font.pixelSize: 11; font.weight: 500; font.letterSpacing: 0.5
@@ -234,14 +247,6 @@ FloatingWindow {
             anchors.right: helpBadge.left; anchors.rightMargin: 12
             anchors.verticalCenter: parent.verticalCenter
             spacing: 6
-            KeyCap { anchors.verticalCenter: parent.verticalCenter; text: "j" }
-            KeyCap { anchors.verticalCenter: parent.verticalCenter; text: "k" }
-            CapLabel { anchors.verticalCenter: parent.verticalCenter; text: "move" }
-            CapGap {}
-            KeyCap { anchors.verticalCenter: parent.verticalCenter; text: "g" }
-            KeyCap { anchors.verticalCenter: parent.verticalCenter; text: "i·t·c·s·d" }
-            CapLabel { anchors.verticalCenter: parent.verticalCenter; text: "goto" }
-            CapGap {}
             KeyCap { anchors.verticalCenter: parent.verticalCenter; text: "⌃⇧h" }
             KeyCap { anchors.verticalCenter: parent.verticalCenter; text: "⌃⇧l" }
             CapLabel { anchors.verticalCenter: parent.verticalCenter; text: "account" }
@@ -268,7 +273,7 @@ FloatingWindow {
             CapLabel { anchors.verticalCenter: parent.verticalCenter; text: "search" }
         }
         Row {
-            visible: statusbar.inConv && !Backend.updateAvailable
+            visible: statusbar.inConv && !conv.cursorMode && !Backend.updateAvailable
             opacity: (statusbar.width - leftStatus.width - implicitWidth - helpBadge.width - 70) >= 0 ? 1 : 0
             anchors.right: helpBadge.left; anchors.rightMargin: 12
             anchors.verticalCenter: parent.verticalCenter
@@ -280,6 +285,9 @@ FloatingWindow {
             KeyCap { anchors.verticalCenter: parent.verticalCenter; text: "⇧j" }
             KeyCap { anchors.verticalCenter: parent.verticalCenter; text: "⇧k" }
             CapLabel { anchors.verticalCenter: parent.verticalCenter; text: "message" }
+            CapGap {}
+            KeyCap { anchors.verticalCenter: parent.verticalCenter; text: "↵" }
+            CapLabel { anchors.verticalCenter: parent.verticalCenter; text: "cursor" }
             CapGap {}
             KeyCap { anchors.verticalCenter: parent.verticalCenter; text: "f" }
             CapLabel { anchors.verticalCenter: parent.verticalCenter; text: "links" }
@@ -297,6 +305,36 @@ FloatingWindow {
             CapLabel { anchors.verticalCenter: parent.verticalCenter; text: "insert" }
             CapGap {}
             KeyCap { anchors.verticalCenter: parent.verticalCenter; text: "h" }
+            CapLabel { anchors.verticalCenter: parent.verticalCenter; text: "back" }
+        }
+        Row {
+            visible: statusbar.inConv && conv.cursorMode && !Backend.updateAvailable
+            opacity: (statusbar.width - leftStatus.width - implicitWidth - helpBadge.width - 70) >= 0 ? 1 : 0
+            anchors.right: helpBadge.left; anchors.rightMargin: 12
+            anchors.verticalCenter: parent.verticalCenter
+            spacing: 6
+            KeyCap { anchors.verticalCenter: parent.verticalCenter; text: "h" }
+            KeyCap { anchors.verticalCenter: parent.verticalCenter; text: "l" }
+            KeyCap { anchors.verticalCenter: parent.verticalCenter; text: "j" }
+            KeyCap { anchors.verticalCenter: parent.verticalCenter; text: "k" }
+            CapLabel { anchors.verticalCenter: parent.verticalCenter; text: "move" }
+            CapGap {}
+            KeyCap { anchors.verticalCenter: parent.verticalCenter; text: "w" }
+            KeyCap { anchors.verticalCenter: parent.verticalCenter; text: "b" }
+            KeyCap { anchors.verticalCenter: parent.verticalCenter; text: "e" }
+            CapLabel { anchors.verticalCenter: parent.verticalCenter; text: "word" }
+            CapGap {}
+            KeyCap { anchors.verticalCenter: parent.verticalCenter; text: "0" }
+            KeyCap { anchors.verticalCenter: parent.verticalCenter; text: "$" }
+            CapLabel { anchors.verticalCenter: parent.verticalCenter; text: "line" }
+            CapGap {}
+            KeyCap { anchors.verticalCenter: parent.verticalCenter; text: "v" }
+            CapLabel { anchors.verticalCenter: parent.verticalCenter; text: "select" }
+            CapGap {}
+            KeyCap { anchors.verticalCenter: parent.verticalCenter; text: "y" }
+            CapLabel { anchors.verticalCenter: parent.verticalCenter; text: "yank" }
+            CapGap {}
+            KeyCap { anchors.verticalCenter: parent.verticalCenter; text: "esc" }
             CapLabel { anchors.verticalCenter: parent.verticalCenter; text: "back" }
         }
     }
@@ -384,6 +422,91 @@ FloatingWindow {
                 e.accepted = true; return
             }
 
+            // y-mode: pick a labeled token to copy; y again = whole message
+            if (inConv && conv.yanking) {
+                if (e.key === Qt.Key_Escape || e.key === Qt.Key_Q) { conv.cancelYank(); e.accepted = true; return }
+                if (e.key === Qt.Key_Y) { conv.yankWholeMessage(); e.accepted = true; return }
+                if (e.text && /^[a-z]$/.test(e.text)) { conv.yankKey(e.text); e.accepted = true; return }
+                conv.cancelYank()
+            }
+
+            // in-message cursor mode owns the keyboard in a conversation:
+            // motions move the cursor, v anchors a selection, y yanks it.
+            // Everything not handled is swallowed (e must not archive mid-select)
+            if (inConv && conv.cursorMode) {
+                // vim scrolling: ⌃d/⌃u move the cursor half a viewport,
+                // ⌃e/⌃y scroll the view a line. Before the letter switch or
+                // ⌃d would fall into d, ⌃e into e (word-end).
+                if (ctrl && (e.key === Qt.Key_D || e.key === Qt.Key_U)) {
+                    conv.vHalfPage(e.key === Qt.Key_D ? 1 : -1)
+                    e.accepted = true; return
+                }
+                if (ctrl && (e.key === Qt.Key_E || e.key === Qt.Key_Y)) {
+                    conv.vScroll(e.key === Qt.Key_E ? 1 : -1)
+                    e.accepted = true; return
+                }
+                if (ctrl) {
+                    // unhandled ctrl-chords fall through to the global handlers
+                } else {
+                switch (e.key) {
+                case Qt.Key_H:
+                    // bar-only state: h backs out (thread → read, single → inbox)
+                    if (!conv.showCursor) {
+                        conv.cursorExit()
+                        if (Backend.messages.length <= 1) Backend.closeConv()
+                    } else conv.vChar(-win.consumeCount())
+                    break
+                case Qt.Key_L: conv.vChar(win.consumeCount()); break
+                case Qt.Key_J:
+                    if (e.modifiers & Qt.ShiftModifier) {
+                        conv.cursorExit(); conv.move(1)
+                        Qt.callLater(function() { conv.cursorEnter(true) })
+                    } else conv.vLine(win.consumeCount())
+                    break
+                case Qt.Key_K:
+                    if (e.modifiers & Qt.ShiftModifier) {
+                        conv.cursorExit(); conv.move(-1)
+                        Qt.callLater(function() { conv.cursorEnter(true) })
+                    } else conv.vLine(-win.consumeCount())
+                    break
+                case Qt.Key_W: conv.vWord(e.modifiers & Qt.ShiftModifier ? "W" : "w", win.consumeCount()); break
+                case Qt.Key_B: conv.vWord(e.modifiers & Qt.ShiftModifier ? "B" : "b", win.consumeCount()); break
+                case Qt.Key_E: conv.vWord(e.modifiers & Qt.ShiftModifier ? "E" : "e", win.consumeCount()); break
+                case Qt.Key_Dollar: conv.vLineEnd(); break
+                case Qt.Key_AsciiCircum: conv.vLineFirst(); break
+                case Qt.Key_G:
+                    if (e.modifiers & Qt.ShiftModifier) conv.vDocEnd()
+                    else conv.vDocStart()
+                    break
+                case Qt.Key_O: conv.vSwap(); break
+                case Qt.Key_Y:
+                    if (e.modifiers & Qt.ShiftModifier) conv.yankWholeMessage()
+                    else conv.vYank()
+                    break
+                case Qt.Key_V:
+                    if (e.modifiers & Qt.ShiftModifier) conv.lineToggle()
+                    else conv.visualToggle()
+                    break
+                case Qt.Key_F: conv.startHints(); break
+                case Qt.Key_I: conv.cursorExit(); conv.focusReply(); break
+                case Qt.Key_Escape:
+                    if (conv.anchored) conv.dropAnchor()
+                    else if (conv.showCursor) conv.showCursor = false
+                    else if (Backend.messages.length > 1) conv.cursorExit()
+                    break
+                case Qt.Key_Q: conv.cursorExit(); Backend.closeConv(); break
+                default:
+                    if (e.key >= Qt.Key_0 && e.key <= Qt.Key_9) {
+                        const digit = e.key - Qt.Key_0
+                        if (digit === 0 && win.pendingCount === 0) conv.vLineStart()
+                        else win.pendingCount = win.pendingCount * 10 + digit
+                    } else if (e.text === "^") conv.vLineFirst()
+                    e.accepted = true; return
+                }
+                e.accepted = true; return
+                }
+            }
+
             // g-prefix goto, case-sensitive: gg top · gi inbox · gI important
             // · gt threads · gT trash · gc calendar · gs sent · gS spam · gd drafts
             // bare modifier presses must not eat the g-prefix (g→⇧→I is
@@ -446,8 +569,11 @@ FloatingWindow {
                 e.accepted = true; return
             }
 
-            // pane focus
-            if (ctrl && e.key === Qt.Key_H) { win.pane = "sidebar"; e.accepted = true; return }
+            // pane focus — ⌃h always reaches the sidebar, even from a message
+            if (ctrl && e.key === Qt.Key_H) {
+                if (inConv) { conv.cursorExit(); Backend.closeConv() }
+                win.pane = "sidebar"; e.accepted = true; return
+            }
             if (ctrl && e.key === Qt.Key_L) { win.pane = "index"; e.accepted = true; return }
             // account switch (cycle; tabs in the sidebar header are clickable too)
             if (ctrl && e.key === Qt.Key_S) { Backend.cycleAccount(1); e.accepted = true; return }
@@ -490,7 +616,8 @@ FloatingWindow {
             case Qt.Key_Return:
             case Qt.Key_Enter:
                 if (win.pane === "sidebar") { sidebar.choose(); win.pane = "index" }
-                else if (!inConv) index.open()
+                else if (inConv) conv.cursorEnter(false)
+                else index.open()
                 break
             case Qt.Key_H:
                 // spatial: conversation → index → sidebar
@@ -514,7 +641,9 @@ FloatingWindow {
                 if (!inConv) Backend.toggleStar(index.current())
                 break
             case Qt.Key_Y:
-                if (inConv && conv.inviteMsg()) Backend.rsvpMail(conv.inviteMsg().id, "accepted")
+                if (inConv && (e.modifiers & Qt.ShiftModifier)) conv.yankWholeMessage()
+                else if (inConv && conv.inviteMsg()) Backend.rsvpMail(conv.inviteMsg().id, "accepted")
+                else if (inConv) conv.startYank()
                 break
             case Qt.Key_M:
                 if (inConv && conv.inviteMsg()) Backend.rsvpMail(conv.inviteMsg().id, "tentative")
@@ -544,7 +673,8 @@ FloatingWindow {
                 else win.visible = false   // hide, stay warm — super+m remaps instantly
                 break
             case Qt.Key_V:
-                if (!inConv && win.pane === "index") index.visualStart()
+                if (inConv) { if (conv.cursorEnter(false)) conv.visualToggle() }
+                else if (win.pane === "index") index.visualStart()
                 break
             case Qt.Key_U:
                 if (!inConv) Backend.undoRemove()

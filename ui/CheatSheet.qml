@@ -8,10 +8,13 @@ import QsLib
 Item {
     id: root
     anchors.fill: parent
-    visible: shown
     property bool shown: false
     property string query: ""
     property bool searching: false
+    // fade in/out like the slqs/dsqrd cheat sheet (shell drives `shown`)
+    opacity: shown ? 1 : 0
+    visible: opacity > 0
+    Behavior on opacity { NumberAnimation { duration: 90 } }
 
     // Presentational only — shell.qml owns key handling (open/close/filter) and
     // sets shown/searching/query; the field below just displays `query`.
@@ -104,6 +107,11 @@ Item {
         anchors.centerIn: parent
         width: Math.min(root.colCount === 1 ? 460 : root.colCount === 2 ? 680 : 960, parent.width - 60)
         height: Math.min(colsRow.implicitHeight + header.height + 54, parent.height - 60)
+        // smoothly resize as filtering adds/removes rows
+        Behavior on height {
+            NumberAnimation { duration: 200; easing.type: Easing.BezierSpline
+                              easing.bezierCurve: [0.165, 0.84, 0.44, 1.0, 1.0, 1.0] }
+        }
         color: Theme.bg
         radius: Theme.radiusCard
         border.width: 1

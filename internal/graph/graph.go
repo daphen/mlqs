@@ -129,10 +129,28 @@ func (c *Client) ListFolders(ctx context.Context) ([]provider.Folder, error) {
 	if err := c.do(ctx, "GET", "/me/mailFolders", q, nil, &res); err != nil {
 		return nil, err
 	}
+	// v1.0 omits wellKnownName for many account types (it's a beta property;
+	// org accounts typically drop it) — resolve the well-known folders by
+	// direct addressing, which v1.0 supports for every account type.
+	roleByID := map[string]string{}
+	idByWK := map[string]string{}
+	for wk, role := range roleByWellKnown {
+		var f apiFolder
+		if err := c.do(ctx, "GET", "/me/mailFolders/"+wk, url.Values{"$select": {"id"}}, nil, &f); err == nil && f.ID != "" {
+			roleByID[f.ID] = role
+			idByWK[wk] = f.ID
+		}
+	}
 	var out []provider.Folder
 	c.mu.Lock()
+	for wk, id := range idByWK {
+		c.wellKnown[wk] = id
+	}
 	for _, f := range res.Items {
 		role := roleByWellKnown[strings.ToLower(f.WellKnownName)]
+		if role == "" {
+			role = roleByID[f.ID]
+		}
 		if f.WellKnownName != "" {
 			c.wellKnown[strings.ToLower(f.WellKnownName)] = f.ID
 		}

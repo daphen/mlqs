@@ -34,6 +34,11 @@
           # everyone else falls back to the vendored snapshot in the package
           export QML2_IMPORT_PATH="$HOME/.local/share/qml:${daemon}/share/mlqs/ui/vendor''${QML2_IMPORT_PATH:+:$QML2_IMPORT_PATH}"
           sock="$XDG_RUNTIME_DIR/mlqs.sock"
+
+          # serialize the daemon aliveness check + spawn: concurrent launches
+          # used to each see "no daemon" and spawn duplicates
+          exec 9>"$XDG_RUNTIME_DIR/mlqs-launch.lock"
+          flock 9
           alive=""
           for pid in $(pgrep -x mlqs 2>/dev/null); do
             # a zombie (unreaped child) matches pgrep but serves nothing

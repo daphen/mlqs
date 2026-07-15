@@ -691,8 +691,8 @@ FloatingWindow {
             case Qt.Key_R:
                 // in a thread: R picks the focused message as reply target
                 if (inConv) conv.replyToFocused()
-                else if (e.modifiers & Qt.ShiftModifier) Backend.toggleRead(index.current())
-                else Backend.refresh()
+                else if (e.modifiers & Qt.ShiftModifier) Backend.refresh()
+                else Backend.toggleRead(index.current())
                 break
             case Qt.Key_Slash:
                 if (!inConv) index.focusSearch()

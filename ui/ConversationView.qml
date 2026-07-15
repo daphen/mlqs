@@ -1736,34 +1736,6 @@ Rectangle {
         }
     }
 
-    // Scroll position indicator — scrollbar geometry, zero interaction:
-    // a slim pill that appears while the view moves and fades when idle.
-    Rectangle {
-        id: scrollHint
-        readonly property real span: list.contentHeight + list.topMargin + list.bottomMargin
-        readonly property real frac: Math.min(1, list.height / Math.max(1, span))
-        visible: frac < 1 && opacity > 0
-        anchors.right: parent.right
-        anchors.rightMargin: 4
-        width: 3
-        radius: 1.5
-        color: Qt.rgba(Theme.fg.r, Theme.fg.g, Theme.fg.b, 0.35)
-        height: Math.max(28, list.height * frac)
-        y: {
-            const top = list.originY - list.topMargin
-            const range = span - list.height
-            const p = range > 0 ? (list.contentY - top) / range : 0
-            return list.y + Math.max(0, Math.min(1, p)) * (list.height - height)
-        }
-        opacity: 0
-        Behavior on opacity { NumberAnimation { duration: 180 } }
-        Connections {
-            target: list
-            function onContentYChanged() { scrollHint.opacity = 1; scrollHintFade.restart() }
-        }
-        Timer { id: scrollHintFade; interval: 900; onTriggered: scrollHint.opacity = 0 }
-    }
-
     Rectangle {
         id: replyFooter
         anchors { left: parent.left; right: parent.right; bottom: parent.bottom }
@@ -1811,7 +1783,9 @@ Rectangle {
         Rectangle {
             id: inputBox
             anchors { left: parent.left; right: parent.right; bottom: parent.bottom
-                      leftMargin: 14; rightMargin: 14; bottomMargin: 10 }
+                      // 14 on all sides: even against the card edge AND concentric
+                      // (card radius 24 − inset 14 = the input's radius)
+                      leftMargin: 14; rightMargin: 14; bottomMargin: 14 }
             height: Math.min(180, replyInput.implicitHeight + 22)
             radius: Theme.radius
             readonly property bool focused: replyInput.activeFocus
@@ -1851,6 +1825,80 @@ Rectangle {
                     }
                 }
             }
+        }
+    }
+
+    // Scroll position indicator — traces the card's own edge: bends around
+    // the top-right corner arc, runs the right edge, bends out at the bottom.
+    // Pure indicator (no interaction); glides along the path and fades idle.
+    Canvas {
+        id: scrollHint
+        anchors.right: parent.right
+        anchors.top: parent.top
+        anchors.bottom: parent.bottom
+        width: Theme.radiusCard + 12
+        renderTarget: Canvas.FramebufferObject
+        visible: opacity > 0 && frac < 1
+        opacity: 0
+        Behavior on opacity { NumberAnimation { duration: 180 } }
+
+        readonly property real span: list.contentHeight + list.topMargin + list.bottomMargin
+        readonly property real frac: Math.min(1, list.height / Math.max(1, span))
+        readonly property real off: 5                      // stroke inset from the edge
+        property real pos: 0                               // 0..1, eased along the path
+        Behavior on pos { NumberAnimation { duration: 150; easing.type: Easing.OutCubic } }
+        onPosChanged: requestPaint()
+        onFracChanged: requestPaint()
+        onVisibleChanged: if (visible) requestPaint()
+
+        Connections {
+            target: list
+            function onContentYChanged() {
+                const top = list.originY - list.topMargin
+                const range = scrollHint.span - list.height
+                scrollHint.pos = range > 0 ? Math.max(0, Math.min(1, (list.contentY - top) / range)) : 0
+                scrollHint.opacity = 1
+                scrollHintFade.restart()
+            }
+        }
+        Timer { id: scrollHintFade; interval: 900; onTriggered: scrollHint.opacity = 0 }
+
+        onPaint: {
+            const ctx = getContext("2d")
+            ctx.reset()
+            const W = width, H = height
+            const R = Theme.radiusCard
+            const r = R - off                             // stroke centerline radius
+            // partial corner sweep — a full quarter-turn read too curly; the
+            // pill just dips into the corners instead of wrapping them
+            const SW = Math.PI * 0.3
+            const arc = SW * r
+            const edge = Math.max(0, H - 2 * R)
+            const total = arc + edge + arc
+            const pill = Math.max(44, frac * total)
+            const t0 = pos * (total - pill)
+            const t1 = t0 + pill
+            function pt(t) {
+                if (t < arc) {                            // top-right corner (partial)
+                    const a = -SW + (t / arc) * SW
+                    return [W - R + r * Math.cos(a), R + r * Math.sin(a)]
+                }
+                if (t < arc + edge)                       // straight right edge
+                    return [W - off, R + (t - arc)]
+                const a = ((t - arc - edge) / arc) * SW   // bottom corner (partial)
+                return [W - R + r * Math.cos(a), H - R + r * Math.sin(a)]
+            }
+            ctx.strokeStyle = String(Theme.cursor)
+            ctx.lineWidth = 4.5
+            ctx.lineCap = "round"
+            ctx.lineJoin = "round"
+            ctx.beginPath()
+            const steps = 40
+            for (let i = 0; i <= steps; i++) {
+                const p2 = pt(t0 + (t1 - t0) * i / steps)
+                if (i === 0) ctx.moveTo(p2[0], p2[1]); else ctx.lineTo(p2[0], p2[1])
+            }
+            ctx.stroke()
         }
     }
 

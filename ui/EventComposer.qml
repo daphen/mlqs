@@ -118,6 +118,16 @@ Rectangle {
         }
         if (e.key === Qt.Key_Escape) { compKeys.forceActiveFocus(); e.accepted = true; return true }
         if (ctrl && (e.key === Qt.Key_Return || e.key === Qt.Key_Enter)) { doCreate(); e.accepted = true; return true }
+        // Tab walks every row including the calendar picker — it's not a text
+        // field, so Qt's default tab chain skips it (the mouse-only bug)
+        if (e.key === Qt.Key_Tab || e.key === Qt.Key_Backtab) {
+            const d = e.key === Qt.Key_Backtab ? -1 : 1
+            const cur = fields.findIndex(f => f.input.activeFocus)
+            sel = ((cur < 0 ? sel : cur) + d + fields.length + 1) % (fields.length + 1)
+            if (sel === fields.length) compKeys.forceActiveFocus()   // calendar row: ↵ cycles
+            else focusSel()
+            e.accepted = true; return true
+        }
         return false
     }
 

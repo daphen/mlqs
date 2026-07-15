@@ -1871,35 +1871,36 @@ Rectangle {
             const W = width, H = height
             const R = Theme.radiusCard
             const r = R - off                             // stroke centerline radius
-            // partial corner sweep — a full quarter-turn read too curly; the
-            // pill just dips into the corners instead of wrapping them
-            const SW = Math.PI * 0.3
+            // full quarter sweep drawn with real arcs — the corner hook IS the
+            // card corner's curvature. (A sampled polyline gave the short arc
+            // ~4 segments and it read as an angled kink on hidpi panels.)
+            const SW = Math.PI / 2
             const arc = SW * r
             const edge = Math.max(0, H - 2 * R)
             const total = arc + edge + arc
             const pill = Math.max(44, frac * total)
             const t0 = pos * (total - pill)
             const t1 = t0 + pill
-            function pt(t) {
-                if (t < arc) {                            // top-right corner (partial)
-                    const a = -SW + (t / arc) * SW
-                    return [W - R + r * Math.cos(a), R + r * Math.sin(a)]
-                }
-                if (t < arc + edge)                       // straight right edge
-                    return [W - off, R + (t - arc)]
-                const a = ((t - arc - edge) / arc) * SW   // bottom corner (partial)
-                return [W - R + r * Math.cos(a), H - R + r * Math.sin(a)]
-            }
             ctx.strokeStyle = String(Theme.cursor)
             ctx.lineWidth = 4.5
             ctx.lineCap = "round"
             ctx.lineJoin = "round"
             ctx.beginPath()
-            const steps = 40
-            for (let i = 0; i <= steps; i++) {
-                const p2 = pt(t0 + (t1 - t0) * i / steps)
-                if (i === 0) ctx.moveTo(p2[0], p2[1]); else ctx.lineTo(p2[0], p2[1])
+            if (t0 < arc) {                               // start inside the top corner
+                ctx.arc(W - R, R, r, -SW + (t0 / arc) * SW,
+                        Math.min(0, -SW + (t1 / arc) * SW))
+            } else if (t0 < arc + edge) {                 // start on the straight edge
+                ctx.moveTo(W - off, R + (t0 - arc))
+            } else {                                      // start inside the bottom corner
+                const a = ((t0 - arc - edge) / arc) * SW
+                ctx.moveTo(W - R + r * Math.cos(a), H - R + r * Math.sin(a))
             }
+            if (t1 > arc && t0 < arc + edge && edge > 0)  // straight right edge
+                ctx.lineTo(W - off, R + Math.min(edge, t1 - arc))
+            if (t1 > arc + edge)                          // bottom corner
+                ctx.arc(W - R, H - R, r,
+                        Math.max(0, (t0 - arc - edge) / arc) * SW,
+                        Math.min(1, (t1 - arc - edge) / arc) * SW)
             ctx.stroke()
         }
     }

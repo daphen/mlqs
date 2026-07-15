@@ -219,6 +219,16 @@ type apiMessage struct {
 	} `json:"body"`
 }
 
+// snippet flattens Graph's bodyPreview: unlike gmail's snippet it keeps raw
+// newlines and runs ~255 chars — multi-line snippets overflow the index rows.
+func snippet(s string) string {
+	s = strings.Join(strings.Fields(s), " ")
+	if len(s) > 180 {
+		s = s[:180]
+	}
+	return s
+}
+
 const listSelect = "id,conversationId,subject,bodyPreview,from,receivedDateTime,isRead,hasAttachments,flag,parentFolderId"
 
 func (m apiMessage) starred() bool { return m.Flag != nil && m.Flag.FlagStatus == "flagged" }
@@ -230,14 +240,14 @@ func group(msgs []apiMessage) []provider.Conversation {
 	for _, m := range msgs {
 		cv := byConv[m.ConversationID]
 		if cv == nil {
-			cv = &provider.Conversation{ID: m.ConversationID, Subject: m.Subject, Snippet: m.BodyPreview, Date: m.Received}
+			cv = &provider.Conversation{ID: m.ConversationID, Subject: m.Subject, Snippet: snippet(m.BodyPreview), Date: m.Received}
 			byConv[m.ConversationID] = cv
 			order = append(order, m.ConversationID)
 		}
 		cv.MsgCount++
 		if m.Received.After(cv.Date) {
 			cv.Date = m.Received
-			cv.Snippet = m.BodyPreview
+			cv.Snippet = snippet(m.BodyPreview)
 		}
 		if !m.IsRead {
 			cv.Unread = true
@@ -341,7 +351,7 @@ func (c *Client) GetConversation(ctx context.Context, id string) ([]provider.Mes
 	out := make([]provider.Message, 0, len(msgs))
 	for _, m := range msgs {
 		pm := provider.Message{
-			ID: m.ID, ConvID: m.ConversationID, Subject: m.Subject, Snippet: m.BodyPreview,
+			ID: m.ID, ConvID: m.ConversationID, Subject: m.Subject, Snippet: snippet(m.BodyPreview),
 			Date: m.Received, Unread: !m.IsRead, Starred: m.starred(),
 		}
 		if m.From != nil {

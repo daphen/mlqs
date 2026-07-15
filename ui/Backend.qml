@@ -118,6 +118,9 @@ Singleton {
         // blanking it collapses the sidebar for a frame (the account-switch jump)
         convsModel.clear(); messages = []
         openConvId = ""; currentFolderId = ""
+        // calendars are per-account: a stale list makes the event composer
+        // offer (and target) the previous account's calendars
+        accountCalendars = []
         send({ type: "folders", account: id })
     }
 

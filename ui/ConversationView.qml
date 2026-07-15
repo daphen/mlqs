@@ -1736,6 +1736,34 @@ Rectangle {
         }
     }
 
+    // Scroll position indicator — scrollbar geometry, zero interaction:
+    // a slim pill that appears while the view moves and fades when idle.
+    Rectangle {
+        id: scrollHint
+        readonly property real span: list.contentHeight + list.topMargin + list.bottomMargin
+        readonly property real frac: Math.min(1, list.height / Math.max(1, span))
+        visible: frac < 1 && opacity > 0
+        anchors.right: parent.right
+        anchors.rightMargin: 4
+        width: 3
+        radius: 1.5
+        color: Qt.rgba(Theme.fg.r, Theme.fg.g, Theme.fg.b, 0.35)
+        height: Math.max(28, list.height * frac)
+        y: {
+            const top = list.originY - list.topMargin
+            const range = span - list.height
+            const p = range > 0 ? (list.contentY - top) / range : 0
+            return list.y + Math.max(0, Math.min(1, p)) * (list.height - height)
+        }
+        opacity: 0
+        Behavior on opacity { NumberAnimation { duration: 180 } }
+        Connections {
+            target: list
+            function onContentYChanged() { scrollHint.opacity = 1; scrollHintFade.restart() }
+        }
+        Timer { id: scrollHintFade; interval: 900; onTriggered: scrollHint.opacity = 0 }
+    }
+
     Rectangle {
         id: replyFooter
         anchors { left: parent.left; right: parent.right; bottom: parent.bottom }

@@ -101,7 +101,7 @@ Rectangle {
                 anchors.centerIn: parent
                 spacing: 7
                 KeyCap {
-                    small: true; ghost: true; text: "⇥"
+                    small: true; ghost: true; text: "tab"
                     anchors.verticalCenter: parent.verticalCenter
                 }
                 Text {

@@ -238,22 +238,38 @@ Rectangle {
         _hintRe.lastIndex = 0
         const inners = []
         const imgTargets = []
+        const rawSkip = []
         let imgOrd = 0
         while ((match = _hintRe.exec(html)) !== null) {
-            urls.push(match[1] || match[2])
-            if (match[2]) { kinds.push("img"); inners.push(""); imgTargets.push(imgOrd); imgOrd++ }
-            else {
-                const rest = html.slice(_hintRe.lastIndex, _hintRe.lastIndex + 2000)
-                const wrapsImg = /^\s*(?:<[^>]+>\s*)*<img/i.test(rest)
-                kinds.push(wrapsImg ? "imglink" : "link")
-                // an image-wrapping anchor targets the NEXT <img> match
-                imgTargets.push(wrapsImg ? imgOrd : -1)
-                // last text segment of the anchor body = where the link block ends
-                const close = rest.search(/<\/a>/i)
-                const segs = (close >= 0 ? rest.slice(0, close) : rest)
-                    .replace(/<[^>]+>/g, "\n").split("\n").map(t => t.trim()).filter(t => t.length)
-                inners.push(segs.length ? segs[segs.length - 1] : "")
+            if (match[2]) {
+                // tiny icons: a view-image cap is noise — the wrapping link
+                // (if any) still gets its own cap
+                const wm = /width="?(\d+)/i.exec(match[0])
+                if (wm && parseInt(wm[1]) < 48) { rawSkip.push(true); imgOrd++; continue }
+                rawSkip.push(false)
+                urls.push(match[2]); kinds.push("img"); inners.push(""); imgTargets.push(imgOrd)
+                imgOrd++
+                continue
             }
+            const rest = html.slice(_hintRe.lastIndex, _hintRe.lastIndex + 2000)
+            const close = rest.search(/<\/a>/i)
+            const inner = close >= 0 ? rest.slice(0, close) : rest
+            const wrapsImg = /^\s*(?:<[^>]+>\s*)*<img/i.test(rest)
+            if (!wrapsImg) {
+                // dropped-image leftovers render as bare underscores — an
+                // anchor with no visible text is not a hintable target
+                const txt = inner.replace(/<[^>]+>/g, "")
+                    .replace(/&nbsp;/g, " ").replace(/&#\d+;/g, "").trim()
+                if (txt.length < 2) { rawSkip.push(true); continue }
+                rawSkip.push(false)
+                urls.push(match[1]); kinds.push("link"); inners.push(""); imgTargets.push(-1)
+                continue
+            }
+            rawSkip.push(false)
+            urls.push(match[1]); kinds.push("imglink"); imgTargets.push(imgOrd)
+            const segs = inner
+                .replace(/<[^>]+>/g, "\n").split("\n").map(t => t.trim()).filter(t => t.length)
+            inners.push(segs.length ? segs[segs.length - 1] : "")
         }
         let total = atts.length + urls.length
         if (total === 0) { Backend.toast("no links in message"); return }

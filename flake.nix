@@ -44,6 +44,25 @@
             setsid nohup ${daemon}/bin/mlqs >/tmp/mlqs-daemon.log 2>&1 </dev/null &
           fi
           for _ in $(seq 1 150); do [ -S "$sock" ] && break; sleep 0.1; done
+
+          # single-instance UI: a q-dismissed window is hidden (visible=false),
+          # invisible to niri — blind spawns stack silent UI processes. If a
+          # client already runs, summon it through the daemon instead; only a
+          # client whose summon fails (wedged/no socket) is replaced.
+          existing=$(pgrep -f "quickshell.* -p .*share/mlqs/ui" | head -1 || true)
+          if [ -n "$existing" ]; then
+            if printf '{"type":"summonui"}\n' | python3 -c '
+          import socket, sys, os
+          s = socket.socket(socket.AF_UNIX)
+          s.settimeout(0.5)
+          s.connect(os.environ["XDG_RUNTIME_DIR"] + "/mlqs.sock")
+          s.sendall(sys.stdin.buffer.read())
+          ' 2>/dev/null; then
+              exit 0
+            fi
+            kill "$existing" 2>/dev/null || true
+            sleep 0.3
+          fi
           exec qs -p "${daemon}/share/mlqs/ui"
         '';
       };

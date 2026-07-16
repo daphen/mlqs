@@ -362,6 +362,18 @@ func (d *daemon) handle(conn net.Conn, cmd command) {
 			}
 		}
 		d.db.UpsertConversations(cmd.Account, items)
+		// The unread fetch is the folder's FULL unread set (when uncapped):
+		// any cached row still flagged unread that it didn't return was read
+		// elsewhere (another client, the web UI). Without this, those rows
+		// flash stale-unread in the warm paint on every open, forever —
+		// upserts only touch rows the live page contains.
+		if uerr == nil && len(unread) < 200 {
+			ids := make([]string, 0, len(unread))
+			for _, c := range unread {
+				ids = append(ids, c.ID)
+			}
+			d.db.ReconcileFolderRead(cmd.Account, cmd.Folder, ids)
+		}
 		d.sendTo(conn, map[string]any{"type": "conversations", "account": cmd.Account,
 			"folder": cmd.Folder, "items": items, "next": normal.NextCursor})
 	case "conversation":
@@ -1146,6 +1158,33 @@ func main() {
 			}
 		}()
 	}
+
+	// Heartbeat: lets the UI detect a dead socket (Quickshell's `connected`
+	// reads the desired state, not reality) and re-dial within seconds.
+	go func() {
+		t := time.NewTicker(3 * time.Second)
+		defer t.Stop()
+		for range t.C {
+			d.broadcast(map[string]any{"type": "ping"})
+		}
+	}()
+
+	// Suspend/hibernate detection: monotonic pauses while wall time doesn't.
+	// Sync loops slept through the gap — kick a refresh so mail isn't stale
+	// until the next poll tick.
+	go func() {
+		mono, wall := time.Now(), time.Now().Round(0)
+		for {
+			time.Sleep(5 * time.Second)
+			m, w := time.Now(), time.Now().Round(0)
+			if w.Sub(wall)-m.Sub(mono) > time.Minute {
+				log.Printf("wake from suspend — resync")
+				time.Sleep(5 * time.Second) // let the network come back first
+				d.broadcast(map[string]any{"type": "resync"})
+			}
+			mono, wall = m, w
+		}
+	}()
 
 	sock := sockPath()
 	os.Remove(sock)

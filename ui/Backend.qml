@@ -65,7 +65,7 @@ Singleton {
         selectAccount(workspaces[(i + (d || 1) + n) % n].id)
     }
 
-    function safeWrite(s) { if (sock.connected) sock.write(s) }
+    function safeWrite(s) { if (sock && sock.connected) sock.write(s) }
     function send(obj) { safeWrite(JSON.stringify(obj) + "\n") }
 
     // ⌃⇧r: force an update check now; the daemon toasts the result.
@@ -641,6 +641,16 @@ Singleton {
         } else if (e.type === "eventcreated") {
             toast("event created ✓")
             if (currentFolderId === "__calendar") refreshAgenda()
+        } else if (e.type === "resync") {
+            // daemon detected wake from suspend: refresh what's on screen
+            if (currentAccount !== "") {
+                send({ type: "folders", account: currentAccount })
+                if (currentFolderId === "__calendar") refreshAgenda()
+                else if (currentFolderId !== "" && currentFolderId !== "__threads")
+                    send({ type: "conversations", account: currentAccount, folder: currentFolderId })
+                if (openConvId !== "")
+                    send({ type: "conversation", account: currentAccount, id: openConvId })
+            }
         } else if (e.type === "summon") {
             summonRequested()
         } else if (e.type === "dismiss") {
@@ -652,31 +662,57 @@ Singleton {
         }
     }
 
-    Socket {
-        id: sock
-        path: Quickshell.env("XDG_RUNTIME_DIR") + "/mlqs.sock"
-        connected: true
-        parser: SplitParser { onRead: data => backend.onEvent(data) }
-        onConnectionStateChanged: {
-            if (!connected) { reconnect.start(); return }
-            // daemon re-sends workspaces on connect; refresh the open view too
-            if (currentAccount !== "") {
-                send({ type: "folders", account: currentAccount })
-                if (currentFolderId === "__calendar") refreshAgenda()
-                else if (currentFolderId !== "" && currentFolderId !== "__threads")
-                    send({ type: "conversations", account: currentAccount, folder: currentFolderId })
-                // an open conversation's fetch died with the old daemon —
-                // re-request it or it shows "loading…" forever
-                if (openConvId !== "")
-                    send({ type: "conversation", account: currentAccount, id: openConvId })
+    // The daemon socket is created fresh on every re-dial: a Socket whose
+    // connect failed (or whose peer closed) is wedged — toggling `connected`
+    // never dials again, and `connected` reads the DESIRED state, so the old
+    // running:!sock.connected timer never even fired. Same fix as slqs/dsqrd.
+    property var sock: null
+    property double lastRecv: 0
+    Component {
+        id: sockComp
+        Socket {
+            path: Quickshell.env("XDG_RUNTIME_DIR") + "/mlqs.sock"
+            connected: true
+            parser: SplitParser { onRead: data => { backend.lastRecv = Date.now(); backend.onEvent(data) } }
+            onConnectionStateChanged: {
+                if (!connected) return
+                // daemon re-sends workspaces on connect; refresh the open view too
+                if (backend.currentAccount !== "") {
+                    backend.send({ type: "folders", account: backend.currentAccount })
+                    if (backend.currentFolderId === "__calendar") backend.refreshAgenda()
+                    else if (backend.currentFolderId !== "" && backend.currentFolderId !== "__threads")
+                        backend.send({ type: "conversations", account: backend.currentAccount, folder: backend.currentFolderId })
+                    // an open conversation's fetch died with the old daemon —
+                    // re-request it or it shows "loading…" forever
+                    if (backend.openConvId !== "")
+                        backend.send({ type: "conversation", account: backend.currentAccount, id: backend.openConvId })
+                }
             }
         }
     }
+    function _redial() {
+        if (sock) sock.destroy()
+        sock = sockComp.createObject(backend)
+    }
+    Component.onCompleted: _redial()
 
+    // Re-dial whenever the daemon has been silent too long. It pings every
+    // 3s, so 8s of silence = dead socket or never connected; a large tick gap
+    // means we were suspended/hibernated — re-dial for a fresh bootstrap.
     Timer {
         id: reconnect
-        interval: 1500; repeat: true
-        running: !sock.connected
-        onTriggered: { sock.connected = false; Qt.callLater(() => sock.connected = true) }
+        interval: 1000; repeat: true; running: true
+        property double lastTick: 0
+        property int cooldown: 0
+        onTriggered: {
+            const now = Date.now()
+            const frozen = lastTick > 0 && (now - lastTick) > 20000
+            lastTick = now
+            if (cooldown > 0 && !frozen) { cooldown--; return }
+            if (frozen || (now - backend.lastRecv) > 8000) {
+                backend._redial()
+                cooldown = 3
+            }
+        }
     }
 }

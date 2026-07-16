@@ -8,6 +8,9 @@ import QsLib
 FloatingWindow {
     id: win
     title: "mail-client"
+    // explicit: a cold-started UI must show without waiting for a summon
+    // (the launcher's summonui broadcast fires before we connect)
+    visible: true
     implicitWidth: 1480
     implicitHeight: 950
     // reference layout: flat canvas, panes float as cards on it
@@ -15,13 +18,22 @@ FloatingWindow {
 
     component CapGap: Item { width: 8; height: 1 }
 
+    // q/dismiss hide the window OURSELVES via hideWarm; any other
+    // visible→false means the compositor closed the toplevel. That surface
+    // can't reliably remap (visible=true no-ops on some quickshell builds),
+    // so quit — the next launch cold-starts a fresh window instead of
+    // summoning a zombie.
+    property bool _selfHide: false
+    function hideWarm() { _selfHide = true; visible = false; _selfHide = false }
+    onVisibleChanged: if (!visible && !_selfHide) Qt.quit()
+
     // warm-summon: the launch script pokes the daemon ("summonui"), which
     // broadcasts to us — the hidden window remaps without a cold start.
     // (qs ipc was unusable here: display filtering + CLI name collisions.)
     Connections {
         target: Backend
         function onSummonRequested() { win.visible = true }
-        function onDismissRequested() { win.visible = false }
+        function onDismissRequested() { win.hideWarm() }
     }
 
     readonly property bool insertMode: (Backend.openConvId !== "" && conv.replyHasFocus)
@@ -568,7 +580,7 @@ FloatingWindow {
                 case Qt.Key_Backtab: Backend.cycleCalFilter(-1); break
                 case Qt.Key_X: Backend.toggleHideCal(); break
                 case Qt.Key_R: Backend.refreshAgenda(); break
-                case Qt.Key_Q: win.visible = false; break
+                case Qt.Key_Q: win.hideWarm(); break
                 case Qt.Key_H: win.pane = "sidebar"; break
                 default:
                     if (e.key >= Qt.Key_0 && e.key <= Qt.Key_9) {
@@ -681,7 +693,7 @@ FloatingWindow {
                 break
             case Qt.Key_Q:
                 if (inConv) Backend.closeConv()
-                else win.visible = false   // hide, stay warm — super+m remaps instantly
+                else win.hideWarm()   // hide, stay warm — super+m remaps instantly
                 break
             case Qt.Key_V:
                 if (inConv) { if (conv.cursorEnter(false)) conv.visualToggle() }

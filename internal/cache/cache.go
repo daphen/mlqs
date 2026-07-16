@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"mlqs/internal/provider"
@@ -234,4 +235,20 @@ func (d *DB) QueryContacts(account, prefix string, limit int) []Contact {
 		out = append(out, c)
 	}
 	return out
+}
+
+// ReconcileFolderRead clears the unread flag on cached conversations in a
+// folder that the authoritative live unread-fetch did not return — they were
+// read outside mlqs, and upserts alone never correct them (the live page no
+// longer contains those rows).
+func (d *DB) ReconcileFolderRead(account, folder string, unreadIDs []string) {
+	args := []any{account, `%"` + folder + `"%`}
+	q := `UPDATE conversations SET unread=0 WHERE account=? AND folder_ids LIKE ? AND unread=1`
+	if len(unreadIDs) > 0 {
+		q += ` AND id NOT IN (?` + strings.Repeat(",?", len(unreadIDs)-1) + `)`
+		for _, id := range unreadIDs {
+			args = append(args, id)
+		}
+	}
+	d.Exec(q, args...)
 }

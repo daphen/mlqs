@@ -39,6 +39,22 @@
           # used to each see "no daemon" and spawn duplicates
           exec 9>"$XDG_RUNTIME_DIR/mlqs-launch.lock"
           flock 9
+
+          # replace a daemon from an older build: after a rebuild the stale
+          # daemon otherwise persists (and keeps firing updateAvailable) until
+          # someone pkills it by hand
+          current=$(readlink -f "${daemon}/bin/mlqs")
+          for pid in $(pgrep -x mlqs 2>/dev/null); do
+            exe=$(readlink -f "/proc/$pid/exe" 2>/dev/null) || continue
+            if [ -n "$exe" ] && [ "$exe" != "$current" ]; then
+              kill "$pid" 2>/dev/null || true
+              # wait for the graceful exit — a half-dead daemon makes the
+              # aliveness check below skip the restart
+              for _ in $(seq 1 50); do kill -0 "$pid" 2>/dev/null || break; sleep 0.1; done
+              kill -9 "$pid" 2>/dev/null || true
+            fi
+          done
+
           alive=""
           for pid in $(pgrep -x mlqs 2>/dev/null); do
             # a zombie (unreaped child) matches pgrep but serves nothing

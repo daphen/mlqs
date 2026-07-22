@@ -1002,7 +1002,10 @@ Rectangle {
                 radius: Theme.radius
                 color: parent.focusedMsg ? Theme.selection : "transparent"
                 border.width: 1
-                border.color: parent.focusedMsg ? Theme.hairline : "transparent"
+                // every message keeps a soft outline so thread boundaries read
+                // in long conversations; focus still gets the full accent
+                border.color: parent.focusedMsg ? Theme.hairline
+                             : multi ? Theme.hairlineSoft : "transparent"
             }
             // copy feedback, slqs grammar: flash in sync with the bar morph
             Rectangle {

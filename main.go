@@ -35,10 +35,13 @@ import (
 	"mlqs/internal/gcal"
 	"mlqs/internal/gmail"
 	"mlqs/internal/graph"
+	imapvendor "mlqs/internal/imap"
 	"mlqs/internal/imgcache"
 	"mlqs/internal/notify"
 	"mlqs/internal/provider"
 	"mlqs/internal/sanitize"
+
+	"golang.org/x/term"
 )
 
 func sockPath() string {
@@ -1008,6 +1011,13 @@ func runAuth(args []string) {
 	if err != nil {
 		log.Fatal(err)
 	}
+	if acct.Vendor == "imap" {
+		if err := authIMAP(acct); err != nil {
+			log.Fatal(err)
+		}
+		fmt.Printf("stored password for %s (%s)\n", acct.Name, acct.Email)
+		return
+	}
 	tok, err := auth.Authorize(context.Background(), acct)
 	if err != nil {
 		log.Fatal(err)
@@ -1016,6 +1026,33 @@ func runAuth(args []string) {
 		log.Fatal(err)
 	}
 	fmt.Printf("authorized %s (%s)\n", acct.Name, acct.Email)
+}
+
+// authIMAP stores the IMAP password (from the MLQS_IMAP_PASSWORD env, or read
+// from the terminal without echo) into the cred file next to the OAuth tokens.
+func authIMAP(acct config.Account) error {
+	pw := os.Getenv("MLQS_IMAP_PASSWORD")
+	if pw == "" {
+		fmt.Printf("password for %s (%s): ", acct.Name, acct.Email)
+		b, err := term.ReadPassword(int(os.Stdin.Fd()))
+		fmt.Println()
+		if err != nil {
+			return fmt.Errorf("reading password: %w", err)
+		}
+		pw = string(b)
+	}
+	if pw == "" {
+		return fmt.Errorf("empty password")
+	}
+	p := config.IMAPCredPath(acct.Name)
+	if err := os.MkdirAll(filepath.Dir(p), 0o700); err != nil {
+		return err
+	}
+	b, err := json.Marshal(map[string]string{"password": pw})
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(p, b, 0o600)
 }
 
 func main() {
@@ -1076,6 +1113,36 @@ func main() {
 			d.providers[a.Name] = g
 			d.cals[a.Name] = g
 			log.Printf("account %s (%s, outlook) ready", a.Name, a.Email)
+		case "imap":
+			// validate host fields up front so a typo surfaces here, not on the
+			// first failed fetch after we've logged the account "ready"
+			if a.IMAPHost == "" || a.SMTPHost == "" {
+				log.Printf("account %s: imap needs imap_host and smtp_host — skipping", a.Name)
+				continue
+			}
+			pw, err := a.IMAPPassword()
+			if err != nil {
+				log.Printf("%v", err)
+				continue
+			}
+			if a.IMAPSecurity == "plain" || a.SMTPSecurity == "plain" {
+				log.Printf("account %s: WARNING — plain (cleartext) connection; the mailbox password is sent unencrypted. Use ssl or starttls unless this is a trusted local network.", a.Name)
+			}
+			// no calendar for plain IMAP — the daemon nil-guards d.cals lookups
+			d.providers[a.Name] = imapvendor.New(imapvendor.Config{
+				Name:         a.Name,
+				Email:        a.Email,
+				Username:     a.Username,
+				Password:     pw,
+				IMAPHost:     a.IMAPHost,
+				IMAPPort:     a.IMAPPort,
+				IMAPSecurity: a.IMAPSecurity,
+				SMTPHost:     a.SMTPHost,
+				SMTPPort:     a.SMTPPort,
+				SMTPSecurity: a.SMTPSecurity,
+				Threading:    a.IMAPThreading,
+			})
+			log.Printf("account %s (%s, imap) ready", a.Name, a.Email)
 		default:
 			log.Printf("account %s: vendor %q not implemented yet", a.Name, a.Vendor)
 		}

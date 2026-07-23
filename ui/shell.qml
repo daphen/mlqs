@@ -213,11 +213,13 @@ FloatingWindow {
 
         // Persistent help affordance — stays pinned in the corner even when
         // the mode-specific hints collapse on a narrow window.
-        KeyCap {
+        Row {
             id: helpBadge
-            text: "?"
             anchors.right: parent.right; anchors.rightMargin: 14
             anchors.verticalCenter: parent.verticalCenter
+            spacing: 6
+            KeyCap { anchors.verticalCenter: parent.verticalCenter; text: "?" }
+            CapLabel { anchors.verticalCenter: parent.verticalCenter; text: "cheatsheet" }
             HoverHandler { cursorShape: Qt.PointingHandCursor }
             TapHandler { onTapped: cheatSheet.shown = true }
         }

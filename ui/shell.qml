@@ -292,12 +292,8 @@ FloatingWindow {
             anchors.right: helpBadge.left; anchors.rightMargin: 12
             anchors.verticalCenter: parent.verticalCenter
             spacing: 6
-            KeyCap { anchors.verticalCenter: parent.verticalCenter; text: "⌃⇧h" }
-            KeyCap { anchors.verticalCenter: parent.verticalCenter; text: "⌃⇧l" }
-            CapLabel { anchors.verticalCenter: parent.verticalCenter; text: "account" }
-            CapGap {}
-            KeyCap { anchors.verticalCenter: parent.verticalCenter; text: "↵" }
-            CapLabel { anchors.verticalCenter: parent.verticalCenter; text: "open" }
+            KeyCap { anchors.verticalCenter: parent.verticalCenter; text: "ctrl s" }
+            CapLabel { anchors.verticalCenter: parent.verticalCenter; text: "accounts" }
             CapGap {}
             KeyCap { anchors.verticalCenter: parent.verticalCenter; text: "x" }
             CapLabel { anchors.verticalCenter: parent.verticalCenter; text: "star" }
@@ -307,12 +303,6 @@ FloatingWindow {
             CapGap {}
             KeyCap { anchors.verticalCenter: parent.verticalCenter; text: "n" }
             CapLabel { anchors.verticalCenter: parent.verticalCenter; text: "compose" }
-            CapGap {}
-            KeyCap { anchors.verticalCenter: parent.verticalCenter; text: "v" }
-            CapLabel { anchors.verticalCenter: parent.verticalCenter; text: "select" }
-            CapGap {}
-            KeyCap { anchors.verticalCenter: parent.verticalCenter; text: "u" }
-            CapLabel { anchors.verticalCenter: parent.verticalCenter; text: "undo" }
             CapGap {}
             KeyCap { anchors.verticalCenter: parent.verticalCenter; text: "/" }
             CapLabel { anchors.verticalCenter: parent.verticalCenter; text: "search" }

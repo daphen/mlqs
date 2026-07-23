@@ -134,7 +134,9 @@ Item {
         id: panel
         anchors.centerIn: parent
         width: Math.min(root.colCount === 1 ? 460 : root.colCount === 2 ? 680 : 960, parent.width - 60)
-        height: Math.min(colsRow.implicitHeight + header.height + 54, parent.height - 60)
+        // +64 = full chrome (header 24 top-margin + 16 gap + 24 flick bottom-margin);
+        // undercounting clipped the last row by a sliver after filtering (#10).
+        height: Math.min(colsRow.implicitHeight + header.height + 64, parent.height - 60)
         // smoothly resize as filtering adds/removes rows
         Behavior on height {
             NumberAnimation { duration: 200; easing.type: Easing.BezierSpline

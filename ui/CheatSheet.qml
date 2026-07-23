@@ -1,28 +1,34 @@
 // `?` from any non-insert mode: a full keybind reference across every mode.
-// Scrim + centered card. Responsive column count, `/` to fuzzy-filter, esc/?
-// to close. Owns its keyboard focus while shown (shell.qml refocuses on close).
+// Built on the QsLib Modal shell (scrim / panel / scroll / keys / chrome live
+// there); this file owns only the content and the `/` fuzzy-filter. Responsive
+// column count.
 import QtQuick
 import "."
 import QsLib
 
-Item {
-    id: root
-    anchors.fill: parent
-    property bool shown: false
+Modal {
+    id: sheet
+    z: 100
+    panelWidth: Math.min(sheet.colCount === 1 ? 460 : sheet.colCount === 2 ? 680 : 960, sheet.width - 60)
+    maxHeightFrac: 0.85
+
     property string query: ""
     property bool searching: false
-    // fade in/out like the slqs/dsqrd cheat sheet (shell drives `shown`)
-    opacity: shown ? 1 : 0
-    visible: opacity > 0
-    Behavior on opacity { NumberAnimation { duration: 90 } }
 
-    // Presentational only — shell.qml owns key handling (open/close/filter) and
-    // sets shown/searching/query; the field below just displays `query`.
     function resetSearch() { searching = false; query = "" }
-    onShownChanged: { resetSearch(); if (shown) flick.contentY = 0 }
-    // keyboard scroll (shell.qml drives these while shown): j/k step, ⌃d/⌃u page
-    function scrollBy(dy) { flick.scrollBy(dy) }
-    function scrollPage(dir) { flick.scrollBy(dir * flick.height * 0.85) }
+    onOpenChanged: if (!open) resetSearch()
+
+    // Filter keys run before the scaffold defaults (accept → keep out of the
+    // shell's scroll/close handling). `/` enters search; while searching, typing
+    // edits the query and esc clears it; `?` toggles the sheet shut.
+    onKeyPressed: e => {
+        if (e.key === Qt.Key_Slash && !searching) { searching = true; e.accepted = true }
+        else if (searching) {
+            if (e.key === Qt.Key_Escape) { resetSearch(); e.accepted = true }
+            else if (e.key === Qt.Key_Backspace) { query = query.slice(0, -1); e.accepted = true }
+            else if (e.text && e.text.length === 1 && e.text.charCodeAt(0) >= 0x20) { query += e.text; e.accepted = true }
+        } else if (e.text === "?") { close(); e.accepted = true }
+    }
 
     // Flat ordered sections: { title, rows: [ [ [keys…], description ] … ] }.
     readonly property var sections: [
@@ -109,8 +115,7 @@ Item {
 
     // Responsive: 1 / 2 / 3 columns by available width, sections packed into the
     // currently-shortest column (balanced by row count) so it reflows cleanly.
-    // keyed on the overlay width (not panel.width — that depends on colCount)
-    readonly property int colCount: root.width < 620 ? 1 : root.width < 940 ? 2 : 3
+    readonly property int colCount: sheet.width < 620 ? 1 : sheet.width < 940 ? 2 : 3
     readonly property var laidOut: {
         const cols = [], load = []
         for (let i = 0; i < colCount; i++) { cols.push([]); load.push(0) }
@@ -123,156 +128,110 @@ Item {
         return cols
     }
 
-    Rectangle {
-        anchors.fill: parent
-        color: Theme.ink
-        opacity: 0.5
-        MouseArea { anchors.fill: parent; onClicked: root.shown = false }
+    header: Item {
+        width: parent.width
+        height: 40
+        Column {
+            anchors.left: parent.left; anchors.verticalCenter: parent.verticalCenter
+            spacing: 2
+            Text {
+                text: "Keyboard shortcuts"
+                color: Theme.fg
+                font.family: Theme.fontFamily; font.pixelSize: 18; font.weight: 600
+            }
+            Text {
+                text: sheet.searching ? "type to filter · esc to clear" : "/ to search · esc or ? to close"
+                color: Theme.fg_muted
+                font.family: Theme.fontFamily; font.pixelSize: 12
+            }
+        }
+        Rectangle {
+            readonly property bool showField: sheet.searching || sheet.query.length > 0
+            anchors.right: parent.right; anchors.verticalCenter: parent.verticalCenter
+            width: showField ? 220 : 0
+            height: 30; radius: 8; clip: true
+            color: Theme.surface1
+            border.width: showField ? 1 : 0
+            border.color: Theme.hairline
+            visible: width > 1
+            Behavior on width { NumberAnimation { duration: 160; easing.type: Easing.OutCubic } }
+            Text {   // display-only: onKeyPressed edits sheet.query
+                anchors.fill: parent; anchors.margins: 8
+                verticalAlignment: Text.AlignVCenter
+                text: sheet.query.length ? sheet.query : "filter…"
+                color: sheet.query.length ? Theme.fg : Theme.fg_muted
+                font.family: Theme.fontFamily; font.pixelSize: 13
+                elide: Text.ElideLeft
+            }
+        }
     }
 
-    Rectangle {
-        id: panel
-        anchors.centerIn: parent
-        width: Math.min(root.colCount === 1 ? 460 : root.colCount === 2 ? 680 : 960, parent.width - 60)
-        // +64 = full chrome (header 24 top-margin + 16 gap + 24 flick bottom-margin);
-        // undercounting clipped the last row by a sliver after filtering (#10).
-        height: Math.min(colsRow.implicitHeight + header.height + 64, parent.height - 60)
-        // smoothly resize as filtering adds/removes rows
-        Behavior on height {
-            NumberAnimation { duration: 200; easing.type: Easing.BezierSpline
-                              easing.bezierCurve: [0.165, 0.84, 0.44, 1.0, 1.0, 1.0] }
-        }
-        color: Theme.bg
-        radius: Theme.radiusCard
-        border.width: 1
-        border.color: Theme.hairline
-        clip: true
+    Row {
+        id: cols
+        width: parent.width
+        spacing: 28
 
-        Item {
-            id: header
-            anchors { top: parent.top; left: parent.left; right: parent.right; margins: 24 }
-            height: 40
+        Repeater {
+            model: sheet.laidOut
             Column {
-                anchors.left: parent.left; anchors.verticalCenter: parent.verticalCenter
-                spacing: 2
-                Text {
-                    text: "Keyboard shortcuts"
-                    color: Theme.fg
-                    font.family: Theme.fontFamily; font.pixelSize: 18; font.weight: 600
-                }
-                Text {
-                    text: root.searching ? "type to filter · esc to clear" : "/ to search · esc or ? to close"
-                    color: Theme.fg_muted
-                    font.family: Theme.fontFamily; font.pixelSize: 12
-                }
-            }
-            // search field: a pill on the right; grows in while filtering, and
-            // stays open as long as there's text (never hide a non-empty filter)
-            Rectangle {
-                readonly property bool showField: root.searching || root.query.length > 0
-                anchors.right: parent.right; anchors.verticalCenter: parent.verticalCenter
-                width: showField ? 220 : 0
-                height: 30; radius: 8; clip: true
-                color: Theme.surface1
-                border.width: showField ? 1 : 0
-                border.color: Theme.hairline
-                visible: width > 1
-                Behavior on width { NumberAnimation { duration: 160; easing.type: Easing.OutCubic } }
-                Text {   // display-only: shell.qml edits root.query
-                    anchors.fill: parent; anchors.margins: 8
-                    verticalAlignment: Text.AlignVCenter
-                    text: root.query.length ? root.query : "filter…"
-                    color: root.query.length ? Theme.fg : Theme.fg_muted
-                    font.family: Theme.fontFamily; font.pixelSize: 13
-                    elide: Text.ElideLeft
-                }
-            }
-        }
+                required property var modelData
+                width: (cols.width - cols.spacing * (sheet.colCount - 1)) / sheet.colCount
+                spacing: 18
 
-        // Scroll when the columns don't fit a short screen (small laptops) —
-        // otherwise the panel clips the bottom rows with no way to reach them.
-        // Trackpad/wheel scroll works natively; shell.qml's j/k/⌃d/⌃u call scrollBy.
-        Flickable {
-            id: flick
-            anchors { top: header.bottom; left: parent.left; right: parent.right
-                      bottom: parent.bottom; margins: 24; topMargin: 16 }
-            clip: true
-            contentWidth: width
-            contentHeight: colsRow.implicitHeight
-            flickableDirection: Flickable.VerticalFlick
-            boundsBehavior: Flickable.StopAtBounds
-            function scrollBy(dy) {
-                contentY = Math.max(0, Math.min(Math.max(0, contentHeight - height), contentY + dy))
-            }
+                Repeater {
+                    model: parent.modelData
+                    Column {
+                        required property var modelData
+                        width: parent.width
+                        spacing: 5
 
-        Row {
-            id: colsRow
-            width: flick.width
-            spacing: 28
-
-            Repeater {
-                model: root.laidOut
-                Column {
-                    required property var modelData
-                    width: (colsRow.width - colsRow.spacing * (root.colCount - 1)) / root.colCount
-                    spacing: 18
-
-                    Repeater {
-                        model: parent.modelData
-                        Column {
-                            required property var modelData
-                            width: parent.width
-                            spacing: 5
-
-                            Text {
-                                text: modelData.title
-                                color: Theme.fg_muted
-                                font.family: Theme.fontFamily; font.pixelSize: 11
-                                font.weight: 600; font.capitalization: Font.AllUppercase
-                                font.letterSpacing: 1.2
-                            }
-                            Repeater {
-                                model: modelData.rows
+                        Text {
+                            text: modelData.title
+                            color: Theme.fg_muted
+                            font.family: Theme.fontFamily; font.pixelSize: 11
+                            font.weight: 600; font.capitalization: Font.AllUppercase
+                            font.letterSpacing: 1.2
+                        }
+                        Repeater {
+                            model: modelData.rows
+                            Row {
+                                required property var modelData
+                                width: parent.width
+                                spacing: 8
                                 Row {
-                                    required property var modelData
-                                    width: parent.width
-                                    spacing: 8
-                                    Row {
-                                        id: keysRow
-                                        spacing: 3
-                                        Repeater {
-                                            model: modelData[0]
-                                            KeyCap {
-                                                required property var modelData
-                                                text: modelData
-                                                small: true
-                                                anchors.verticalCenter: parent.verticalCenter
-                                            }
+                                    id: keysRow
+                                    spacing: 3
+                                    Repeater {
+                                        model: modelData[0]
+                                        KeyCap {
+                                            required property var modelData
+                                            text: modelData
+                                            small: true
+                                            anchors.verticalCenter: parent.verticalCenter
                                         }
                                     }
-                                    Text {
-                                        width: parent.width - keysRow.width - parent.spacing
-                                        anchors.verticalCenter: parent.verticalCenter
-                                        text: modelData[1]
-                                        color: Theme.fg
-                                        elide: Text.ElideRight
-                                        font.family: Theme.fontFamily; font.pixelSize: 13
-                                    }
+                                }
+                                Text {
+                                    width: parent.width - keysRow.width - parent.spacing
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    text: modelData[1]
+                                    color: Theme.fg
+                                    elide: Text.ElideRight
+                                    font.family: Theme.fontFamily; font.pixelSize: 13
                                 }
                             }
                         }
                     }
                 }
             }
+        }
+    }
 
-            // empty-state when a filter matches nothing
-            Text {
-                visible: root.laidOut.length === 0 || root.filtered.length === 0
-                text: "no shortcuts match “" + root.query + "”"
-                color: Theme.fg_muted
-                font.family: Theme.fontFamily; font.pixelSize: 13
-            }
-        }
-        }
+    // empty-state when a filter matches nothing
+    Text {
+        visible: sheet.laidOut.length === 0 || sheet.filtered.length === 0
+        text: "no shortcuts match “" + sheet.query + "”"
+        color: Theme.fg_muted
+        font.family: Theme.fontFamily; font.pixelSize: 13
     }
 }

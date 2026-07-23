@@ -141,16 +141,19 @@ FloatingWindow {
     CheatSheet {
         id: cheatSheet
         z: 100
+        onClosed: keys.forceActiveFocus()
     }
 
-    // "What's new" modal (QsLib), shell-routed like the cheat sheet. ⇧U opens it
-    // when the update event carried a changelog; ↵ applies.
+    // "What's new" modal (QsLib). ⇧U opens it when the update event carried a
+    // changelog; the scaffold's ↵ (accepted) applies the update.
     ChangelogModal {
         id: changelog
         z: 101
         entries: Backend.updateChangelog
         fromRev: Backend.updateCurrent
         toRev: Backend.updateLatest
+        onAccepted: { close(); Backend.applyUpdate() }
+        onClosed: keys.forceActiveFocus()
     }
 
     FeedbackPill {
@@ -221,7 +224,7 @@ FloatingWindow {
             KeyCap { anchors.verticalCenter: parent.verticalCenter; text: "?" }
             CapLabel { anchors.verticalCenter: parent.verticalCenter; text: "cheatsheet" }
             HoverHandler { cursorShape: Qt.PointingHandCursor }
-            TapHandler { onTapped: cheatSheet.shown = true }
+            TapHandler { onTapped: cheatSheet.show() }
         }
         // Update banner: detect-only (the host applies via flake bump + rebuild),
         // takes over the hint slot when a newer build exists.
@@ -386,41 +389,11 @@ FloatingWindow {
             const ctrl = e.modifiers & Qt.ControlModifier
             const inConv = Backend.openConvId !== ""
 
-            // Changelog "What's new": ↵ applies the update, j/k scroll, esc/q close.
-            if (changelog.open) {
-                if (e.key === Qt.Key_Escape || e.key === Qt.Key_Q) changelog.close()
-                else if (e.key === Qt.Key_Return || e.key === Qt.Key_Enter) { changelog.close(); Backend.applyUpdate() }
-                else if ((e.modifiers & Qt.ControlModifier) && (e.key === Qt.Key_D || e.key === Qt.Key_U)) changelog.scrollPage(e.key === Qt.Key_D ? 1 : -1)
-                else if (e.key === Qt.Key_J) changelog.scrollStep(48)
-                else if (e.key === Qt.Key_K) changelog.scrollStep(-48)
-                e.accepted = true; return
-            }
-            // Cheat sheet: driven entirely from here (the shell keeps keyboard
-            // focus — handing it to the overlay proved unreliable). esc closes
-            // (or clears the filter first), / starts filtering, typing edits it.
-            if (cheatSheet.shown) {
-                if (e.key === Qt.Key_Escape) {
-                    if (cheatSheet.searching || cheatSheet.query) cheatSheet.resetSearch()
-                    else cheatSheet.shown = false
-                } else if (e.key === Qt.Key_Q && !cheatSheet.searching) {
-                    cheatSheet.shown = false
-                } else if (e.key === Qt.Key_Slash && !cheatSheet.searching) {
-                    cheatSheet.searching = true
-                } else if (e.key === Qt.Key_Question && !cheatSheet.searching) {
-                    cheatSheet.shown = false
-                } else if (!cheatSheet.searching && (e.modifiers & Qt.ControlModifier)
-                           && (e.key === Qt.Key_D || e.key === Qt.Key_U)) {
-                    cheatSheet.scrollPage(e.key === Qt.Key_D ? 1 : -1)
-                } else if (!cheatSheet.searching && (e.key === Qt.Key_J || e.key === Qt.Key_K)) {
-                    cheatSheet.scrollBy(e.key === Qt.Key_J ? 48 : -48)
-                } else if (cheatSheet.searching) {
-                    if (e.key === Qt.Key_Backspace) cheatSheet.query = cheatSheet.query.slice(0, -1)
-                    else if (e.text && e.text.length === 1 && e.text.charCodeAt(0) >= 0x20) cheatSheet.query += e.text
-                }
-                e.accepted = true; return
-            }
+            // Modals (changelog, cheat sheet) own their own focus + keys via the
+            // QsLib Modal scaffold; while one is open it has focus and this router
+            // never sees the event.
             if (e.key === Qt.Key_Question) {
-                cheatSheet.shown = true; e.accepted = true; return
+                cheatSheet.show(); e.accepted = true; return
             }
 
             // hint mode owns Esc + label letters; any OTHER key drops the

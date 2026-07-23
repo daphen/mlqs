@@ -143,6 +143,16 @@ FloatingWindow {
         z: 100
     }
 
+    // "What's new" modal (QsLib), shell-routed like the cheat sheet. ⇧U opens it
+    // when the update event carried a changelog; ↵ applies.
+    ChangelogModal {
+        id: changelog
+        z: 101
+        entries: Backend.updateChangelog
+        fromRev: Backend.updateCurrent
+        toRev: Backend.updateLatest
+    }
+
     FeedbackPill {
         id: toast
         anchors.horizontalCenter: parent.horizontalCenter
@@ -384,6 +394,15 @@ FloatingWindow {
             const ctrl = e.modifiers & Qt.ControlModifier
             const inConv = Backend.openConvId !== ""
 
+            // Changelog "What's new": ↵ applies the update, j/k scroll, esc/q close.
+            if (changelog.open) {
+                if (e.key === Qt.Key_Escape || e.key === Qt.Key_Q) changelog.close()
+                else if (e.key === Qt.Key_Return || e.key === Qt.Key_Enter) { changelog.close(); Backend.applyUpdate() }
+                else if ((e.modifiers & Qt.ControlModifier) && (e.key === Qt.Key_D || e.key === Qt.Key_U)) changelog.scrollPage(e.key === Qt.Key_D ? 1 : -1)
+                else if (e.key === Qt.Key_J) changelog.scrollStep(48)
+                else if (e.key === Qt.Key_K) changelog.scrollStep(-48)
+                e.accepted = true; return
+            }
             // Cheat sheet: driven entirely from here (the shell keeps keyboard
             // focus — handing it to the overlay proved unreliable). esc closes
             // (or clears the filter first), / starts filtering, typing edits it.
@@ -434,10 +453,11 @@ FloatingWindow {
             if (ctrl && !(e.modifiers & Qt.ShiftModifier) && e.key === Qt.Key_S) {
                 acctDropdown.show(); e.accepted = true; return
             }
-            // ⇧U: apply an available update (parity with slqs/dsqrd). Gated on
-            // updateAvailable so it never shadows the u=undo case below.
+            // ⇧U: show "what's new" if the update carried a changelog, else apply
+            // straight away. Gated on updateAvailable so it never shadows u=undo.
             if (!ctrl && (e.modifiers & Qt.ShiftModifier) && e.key === Qt.Key_U && Backend.updateAvailable) {
-                Backend.applyUpdate(); e.accepted = true; return
+                if (Backend.updateChangelog.length > 0) changelog.show(); else Backend.applyUpdate()
+                e.accepted = true; return
             }
             // visual mode owns the keyboard in the index
             if (!inConv && index.visualMode) {

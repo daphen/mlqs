@@ -146,10 +146,15 @@ func (d *daemon) checkUpdate(ctx context.Context) {
 	if !ok {
 		return // transient error — keep the previous verdict
 	}
+	var changelog []string
+	if target != "" && target != gitRev {
+		changelog = d.fetchChangelog(ctx, repo, gitRev, target)
+	}
 	d.updMu.Lock()
 	if target != "" && target != gitRev {
 		d.updateEvent = map[string]any{"type": "updateAvailable",
-			"current": shortRev(gitRev), "latest": shortRev(target)}
+			"current": shortRev(gitRev), "latest": shortRev(target),
+			"changelog": changelog}
 	} else {
 		d.updateEvent = nil // current on all legs — clear any stale badge
 	}
@@ -271,6 +276,61 @@ func (d *daemon) checkFork(ctx context.Context, repo, upstream string) (string, 
 	}
 	d.cacheTarget(target)
 	return target, true
+}
+
+// fetchChangelog returns the "What's new" entries between two revs: the
+// `Changelog:` trailer lines of the commits in the compare range, newest-first,
+// capped at 30. Pre-convention ranges have no trailers → fall back to commit
+// subjects. Uses its own GET (not ghGet) so it never touches the update-check
+// ETag. Best-effort — any failure yields nil (the UI then applies without a
+// modal). A fork build whose target lives upstream may 404 here → nil, fine.
+func (d *daemon) fetchChangelog(ctx context.Context, repo, cur, latest string) []string {
+	url := "https://api.github.com/repos/" + repo + "/compare/" + cur + "..." + latest
+	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
+	if err != nil {
+		return nil
+	}
+	req.Header.Set("User-Agent", "mlqs")
+	req.Header.Set("Accept", "application/vnd.github+json")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return nil
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return nil
+	}
+	var data struct {
+		Commits []struct {
+			Commit struct {
+				Message string `json:"message"`
+			} `json:"commit"`
+		} `json:"commits"`
+	}
+	if json.NewDecoder(io.LimitReader(resp.Body, 8<<20)).Decode(&data) != nil {
+		return nil
+	}
+	var entries, subjects []string
+	for _, c := range data.Commits {
+		msg := c.Commit.Message
+		subjects = append(subjects, strings.SplitN(msg, "\n", 2)[0])
+		for _, line := range strings.Split(msg, "\n") {
+			line = strings.TrimSpace(line)
+			if e := strings.TrimSpace(strings.TrimPrefix(line, "Changelog:")); strings.HasPrefix(line, "Changelog:") && e != "" {
+				entries = append(entries, e)
+			}
+		}
+	}
+	if len(entries) == 0 {
+		entries = subjects // pre-convention range: fall back to subjects
+	}
+	for i, j := 0, len(entries)-1; i < j; i, j = i+1, j-1 { // newest-first
+		entries[i], entries[j] = entries[j], entries[i]
+	}
+	if len(entries) > 30 {
+		entries = entries[:30]
+	}
+	return entries
 }
 
 func (d *daemon) sendTo(c net.Conn, v any) {

@@ -507,6 +507,7 @@ Singleton {
     property bool updateAvailable: false
     property string updateCurrent: ""
     property string updateLatest: ""
+    property var updateChangelog: []   // "What's new" entries between current→latest
     // Shift+U → run the host's apply command (parity with slqs/dsqrd). Detect-only:
     // the app never self-updates; SLK_UPDATE_CMD is the host's apply step (bump the
     // flake + rebuild + restart). Runs via `sh -c` so it can spawn its own terminal
@@ -521,7 +522,7 @@ Singleton {
         let e
         try { e = JSON.parse(line) } catch (err) { return }
         if (e.type === "updateAvailable") {
-            updateCurrent = e.current || ""; updateLatest = e.latest || ""; updateAvailable = true
+            updateCurrent = e.current || ""; updateLatest = e.latest || ""; updateChangelog = e.changelog || []; updateAvailable = true
         } else if (e.type === "workspaces") {
             workspaces = e.workspaces || []
             if (currentAccount === "" && workspaces.length > 0)

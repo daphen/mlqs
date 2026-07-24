@@ -355,6 +355,9 @@ FloatingWindow {
             anchors.right: helpBadge.left; anchors.rightMargin: 12
             anchors.verticalCenter: parent.verticalCenter
             spacing: 6
+            KeyCap { anchors.verticalCenter: parent.verticalCenter; text: "f" }
+            CapLabel { anchors.verticalCenter: parent.verticalCenter; text: "links" }
+            CapGap {}
             KeyCap { anchors.verticalCenter: parent.verticalCenter; text: "v" }
             CapLabel { anchors.verticalCenter: parent.verticalCenter; text: "select" }
             CapGap {}

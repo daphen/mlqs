@@ -18,21 +18,19 @@ FloatingWindow {
 
     component CapGap: Item { width: 8; height: 1 }
 
-    // Every dismissal QUITS the UI — q, super+m, closing a conversation, the
-    // daemon's dismiss, or the compositor closing the toplevel. quickshell's
-    // visible=true no-ops on a warm-hidden FloatingWindow (#11), so keeping a
-    // hidden window to re-map produced invisible "summons" and stacked
-    // windowless ghosts; instead the launcher cold-starts a fresh,
-    // always-mapping window on the next open (the daemon stays alive, so data
-    // is instant). hideWarm keeps its name for its callers; it now just quits.
-    function hideWarm() { Qt.quit() }
-    onVisibleChanged: if (!visible) Qt.quit()
+    // q/dismiss hide the window warm (stay alive) for an instant re-show; a
+    // compositor-initiated close quits so a killed toplevel cold-starts fresh.
+    // Where visible=true re-maps a hidden window (this build) the summon is
+    // instant; where it no-ops (#11, some quickshell 0.3.0) the launcher's
+    // map-check fails and falls through to a cold start (mlqs-client confirms
+    // an actual mapped window), so a failed re-show never leaves a ghost.
+    property bool _selfHide: false
+    function hideWarm() { _selfHide = true; visible = false; _selfHide = false }
+    onVisibleChanged: if (!visible && !_selfHide) Qt.quit()
 
-    // The daemon still broadcasts dismiss (its summonui/summonack stay for the
-    // launcher's off-niri fallback); there is no summon handler here anymore
-    // because a live UI is always already visible.
     Connections {
         target: Backend
+        function onSummonRequested() { win.visible = true }
         function onDismissRequested() { win.hideWarm() }
     }
 
@@ -719,7 +717,7 @@ FloatingWindow {
                 break
             case Qt.Key_Q:
                 if (inConv) Backend.closeConv()
-                else win.hideWarm()   // quit; next open cold-starts a fresh window (#11)
+                else win.hideWarm()   // hide warm; launcher re-shows or cold-starts (#11)
                 break
             case Qt.Key_V:
                 if (inConv) { if (conv.cursorEnter(false)) conv.visualToggle() }

@@ -240,10 +240,6 @@ FloatingWindow {
             anchors.right: helpBadge.left; anchors.rightMargin: 12
             anchors.verticalCenter: parent.verticalCenter
             spacing: 6
-            KeyCap { anchors.verticalCenter: parent.verticalCenter; text: "j" }
-            KeyCap { anchors.verticalCenter: parent.verticalCenter; text: "k" }
-            CapLabel { anchors.verticalCenter: parent.verticalCenter; text: "move" }
-            CapGap {}
             KeyCap { anchors.verticalCenter: parent.verticalCenter; text: "↵" }
             CapLabel { anchors.verticalCenter: parent.verticalCenter; text: "join" }
             CapGap {}
@@ -311,15 +307,11 @@ FloatingWindow {
             CapLabel { anchors.verticalCenter: parent.verticalCenter; text: "search" }
         }
         Row {
-            visible: statusbar.inConv && !conv.cursorMode && !Backend.updateAvailable
+            visible: statusbar.inConv && !conv.cursorMode && !win.insertMode && !Backend.updateAvailable
             opacity: (statusbar.width - leftStatus.width - implicitWidth - helpBadge.width - 70) >= 0 ? 1 : 0
             anchors.right: helpBadge.left; anchors.rightMargin: 12
             anchors.verticalCenter: parent.verticalCenter
             spacing: 6
-            KeyCap { anchors.verticalCenter: parent.verticalCenter; text: "j" }
-            KeyCap { anchors.verticalCenter: parent.verticalCenter; text: "k" }
-            CapLabel { anchors.verticalCenter: parent.verticalCenter; text: "scroll" }
-            CapGap {}
             KeyCap { anchors.verticalCenter: parent.verticalCenter; text: "⇧j" }
             KeyCap { anchors.verticalCenter: parent.verticalCenter; text: "⇧k" }
             CapLabel { anchors.verticalCenter: parent.verticalCenter; text: "message" }
@@ -345,27 +337,24 @@ FloatingWindow {
             KeyCap { anchors.verticalCenter: parent.verticalCenter; text: "h" }
             CapLabel { anchors.verticalCenter: parent.verticalCenter; text: "back" }
         }
+        Row {   // composing a reply: only the keys that actually work while typing
+            visible: statusbar.inConv && win.insertMode && !Backend.updateAvailable
+            opacity: (statusbar.width - leftStatus.width - implicitWidth - helpBadge.width - 70) >= 0 ? 1 : 0
+            anchors.right: helpBadge.left; anchors.rightMargin: 12
+            anchors.verticalCenter: parent.verticalCenter
+            spacing: 6
+            KeyCap { anchors.verticalCenter: parent.verticalCenter; text: "⌃↵" }
+            CapLabel { anchors.verticalCenter: parent.verticalCenter; text: "send" }
+            CapGap {}
+            KeyCap { anchors.verticalCenter: parent.verticalCenter; text: "esc" }
+            CapLabel { anchors.verticalCenter: parent.verticalCenter; text: "cancel" }
+        }
         Row {
             visible: statusbar.inConv && conv.cursorMode && !Backend.updateAvailable
             opacity: (statusbar.width - leftStatus.width - implicitWidth - helpBadge.width - 70) >= 0 ? 1 : 0
             anchors.right: helpBadge.left; anchors.rightMargin: 12
             anchors.verticalCenter: parent.verticalCenter
             spacing: 6
-            KeyCap { anchors.verticalCenter: parent.verticalCenter; text: "h" }
-            KeyCap { anchors.verticalCenter: parent.verticalCenter; text: "l" }
-            KeyCap { anchors.verticalCenter: parent.verticalCenter; text: "j" }
-            KeyCap { anchors.verticalCenter: parent.verticalCenter; text: "k" }
-            CapLabel { anchors.verticalCenter: parent.verticalCenter; text: "move" }
-            CapGap {}
-            KeyCap { anchors.verticalCenter: parent.verticalCenter; text: "w" }
-            KeyCap { anchors.verticalCenter: parent.verticalCenter; text: "b" }
-            KeyCap { anchors.verticalCenter: parent.verticalCenter; text: "e" }
-            CapLabel { anchors.verticalCenter: parent.verticalCenter; text: "word" }
-            CapGap {}
-            KeyCap { anchors.verticalCenter: parent.verticalCenter; text: "0" }
-            KeyCap { anchors.verticalCenter: parent.verticalCenter; text: "$" }
-            CapLabel { anchors.verticalCenter: parent.verticalCenter; text: "line" }
-            CapGap {}
             KeyCap { anchors.verticalCenter: parent.verticalCenter; text: "v" }
             CapLabel { anchors.verticalCenter: parent.verticalCenter; text: "select" }
             CapGap {}

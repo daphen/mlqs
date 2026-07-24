@@ -307,7 +307,9 @@ FloatingWindow {
             CapLabel { anchors.verticalCenter: parent.verticalCenter; text: "search" }
         }
         Row {
-            visible: statusbar.inConv && !conv.cursorMode && !win.insertMode && !Backend.updateAvailable
+            // only for actual threads (>1 message) — a single message enters
+            // cursor mode, so showing this "threads" chin flashed on open (#chin)
+            visible: statusbar.inConv && Backend.messages.length > 1 && !conv.cursorMode && !win.insertMode && !Backend.updateAvailable
             opacity: (statusbar.width - leftStatus.width - implicitWidth - helpBadge.width - 70) >= 0 ? 1 : 0
             anchors.right: helpBadge.left; anchors.rightMargin: 12
             anchors.verticalCenter: parent.verticalCenter

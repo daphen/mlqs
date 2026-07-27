@@ -1,0 +1,123 @@
+import QtQuick
+import "."
+import QsLib
+
+// ctrl+o on a calendar event: its full detail in a modal (the shared Modal
+// shell — scroll/keys/chrome there), so you can read everything without
+// joining. ↵ joins the meeting when there is one; esc closes.
+Modal {
+    id: em
+    property var ev: null
+    panelWidth: Math.round(Math.min(560, em.width - 100))
+    maxHeightFrac: 0.72
+    panelColor: Theme.bg   // pickers/detail panels use bg so selection reads
+
+    function showEvent(e) { if (!e) return; ev = e; show() }
+    readonly property var attendees: (ev && ev.attendeesJson) ? JSON.parse(ev.attendeesJson) : []
+
+    onAccepted: { if (ev && ev.meetLink) Qt.openUrlExternally(ev.meetLink); close() }
+
+    header: Column {
+        width: parent.width; spacing: 3
+        Text {
+            width: parent.width
+            text: em.ev ? em.ev.title : ""
+            color: Theme.fg
+            font.family: Theme.fontFamily; font.hintingPreference: Font.PreferNoHinting
+            font.pixelSize: 16; font.weight: 600; wrapMode: Text.WordWrap
+        }
+        Text {
+            width: parent.width
+            text: em.ev ? (em.ev.dayKey + " · " + em.ev.timeStr) : ""
+            color: Theme.fg_muted
+            font.family: Theme.fontFamily; font.hintingPreference: Font.PreferNoHinting
+            font.pixelSize: 12
+        }
+    }
+
+    footer: Row {
+        anchors.horizontalCenter: parent.horizontalCenter
+        spacing: 5
+        KeyCap { visible: em.ev && em.ev.meetLink !== ""; anchors.verticalCenter: parent.verticalCenter; small: true; text: "↵" }
+        CapLabel { visible: em.ev && em.ev.meetLink !== ""; anchors.verticalCenter: parent.verticalCenter; text: "join" }
+        Item { visible: em.ev && em.ev.meetLink !== ""; width: 10; height: 1 }
+        KeyCap { anchors.verticalCenter: parent.verticalCenter; small: true; text: "esc" }
+        CapLabel { anchors.verticalCenter: parent.verticalCenter; text: "close" }
+    }
+
+    Column {
+        width: parent.width
+        spacing: 9
+
+        Text {
+            visible: em.ev && em.ev.location !== "" && em.ev.location.indexOf("http") !== 0
+            width: parent.width
+            text: em.ev ? em.ev.location : ""
+            color: Theme.fg; font.family: Theme.fontFamily
+            font.hintingPreference: Font.PreferNoHinting; font.pixelSize: 13; wrapMode: Text.WordWrap
+        }
+
+        Text {
+            visible: em.ev && em.ev.organizer !== ""
+            text: "organized by " + (em.ev ? em.ev.organizer : "")
+            color: Theme.fg_muted; font.family: Theme.fontFamily; font.pixelSize: 12
+        }
+
+        // Attendees, each with its RSVP dot (green/yellow/red/hollow).
+        Column {
+            width: parent.width; spacing: 4
+            visible: em.attendees.length > 0
+            Repeater {
+                model: em.attendees
+                delegate: Row {
+                    required property var modelData
+                    spacing: 8
+                    Rectangle {
+                        anchors.verticalCenter: parent.verticalCenter
+                        width: 7; height: 7; radius: 3.5
+                        readonly property string st: modelData.status || ""
+                        color: st === "accepted" ? Theme.green
+                             : st === "tentative" ? Theme.yellow
+                             : st === "declined" ? Theme.red : "transparent"
+                        border.width: st === "needsAction" ? 1.2 : 0
+                        border.color: Theme.yellow
+                    }
+                    Text {
+                        text: (modelData.name && modelData.name !== "" ? modelData.name : modelData.email)
+                              + (modelData.self ? " (you)" : "")
+                        color: Theme.fg_muted; font.family: Theme.fontFamily; font.pixelSize: 12
+                    }
+                }
+            }
+        }
+
+        // Meeting link as TEXT — click (or ↵) to join; never auto-opened.
+        Text {
+            visible: em.ev && em.ev.meetLink !== ""
+            width: parent.width
+            text: "join: " + (em.ev ? em.ev.meetLink : "")
+            color: Theme.sky; font.family: Theme.fontFamily; font.pixelSize: 12
+            elide: Text.ElideRight
+            TapHandler { onTapped: { if (em.ev) Qt.openUrlExternally(em.ev.meetLink) } }
+        }
+        Text {
+            visible: em.ev && em.ev.htmlLink !== ""
+            width: parent.width
+            text: "open in calendar"
+            color: Theme.sky; font.family: Theme.fontFamily; font.pixelSize: 12
+            TapHandler { onTapped: { if (em.ev) Qt.openUrlExternally(em.ev.htmlLink) } }
+        }
+
+        Rectangle {
+            visible: em.ev && em.ev.description !== ""
+            width: parent.width; height: 1; color: Theme.hairline
+        }
+        Text {
+            visible: em.ev && em.ev.description !== ""
+            width: parent.width
+            text: em.ev ? em.ev.description : ""
+            color: Theme.fg; font.family: Theme.fontFamily
+            font.hintingPreference: Font.PreferNoHinting; font.pixelSize: 13; wrapMode: Text.WordWrap
+        }
+    }
+}

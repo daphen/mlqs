@@ -682,6 +682,7 @@ func (t apiCalTime) parse() time.Time {
 type apiEvent struct {
 	ID            string     `json:"id"`
 	Subject       string     `json:"subject"`
+	BodyPreview   string     `json:"bodyPreview"`
 	Start         apiCalTime `json:"start"`
 	End           apiCalTime `json:"end"`
 	IsAllDay      bool       `json:"isAllDay"`
@@ -729,6 +730,7 @@ func flattenEvent(calID string, e apiEvent) provider.CalEvent {
 		ID: e.ID, CalID: calID, Title: e.Subject,
 		Start: e.Start.parse(), End: e.End.parse(), AllDay: e.IsAllDay,
 		HTMLLink: e.WebLink, ICalUID: e.ICalUID,
+		Description: e.BodyPreview,
 	}
 	if ev.Title == "" {
 		ev.Title = "(untitled)"
@@ -784,7 +786,7 @@ func (c *Client) Calendars(ctx context.Context) ([]provider.Calendar, error) {
 	return out, nil
 }
 
-const eventSelect = "id,subject,start,end,isAllDay,isCancelled,webLink,iCalUId,onlineMeeting,onlineMeetingUrl,location,organizer,attendees,responseStatus"
+const eventSelect = "id,subject,start,end,isAllDay,isCancelled,webLink,iCalUId,onlineMeeting,onlineMeetingUrl,location,organizer,attendees,responseStatus,bodyPreview"
 
 func (c *Client) Events(ctx context.Context, calID string, from, to time.Time) ([]provider.CalEvent, error) {
 	path := "/me/calendars/" + url.PathEscape(calID) + "/calendarView"

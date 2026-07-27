@@ -36,6 +36,7 @@ type CalEvent struct {
 	MyStatus  string        `json:"myStatus"` // accepted|declined|tentative|needsAction|"" (no attendee entry)
 	Organizer string        `json:"organizer"`
 	Attendees []CalAttendee `json:"attendees"`
+	Description string       `json:"description"`
 	ICalUID   string        `json:"iCalUid"`
 }
 

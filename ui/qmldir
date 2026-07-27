@@ -5,4 +5,5 @@ ConversationView ConversationView.qml
 MailComposer MailComposer.qml
 CalendarView CalendarView.qml
 EventComposer EventComposer.qml
+EventModal EventModal.qml
 CheatSheet CheatSheet.qml

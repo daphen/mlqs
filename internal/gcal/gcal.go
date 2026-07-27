@@ -150,6 +150,7 @@ func flatten(calID string, e apiEvent) Event {
 		ID: e.ID, CalID: calID, Title: e.Summary, Location: e.Location,
 		Start: start, End: end, AllDay: allDay,
 		MeetLink: e.HangoutLink, HTMLLink: e.HTMLLink, ICalUID: e.ICalUID,
+		Description: e.Description,
 	}
 	if ev.Title == "" {
 		ev.Title = "(untitled)"

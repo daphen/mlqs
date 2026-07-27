@@ -142,6 +142,13 @@ FloatingWindow {
         onClosed: keys.forceActiveFocus()
     }
 
+    // ctrl+o on a calendar event: full detail without joining (QsLib Modal).
+    EventModal {
+        id: eventModal
+        z: 102
+        onClosed: keys.forceActiveFocus()
+    }
+
     // "What's new" modal (QsLib). ⇧U opens it when the update event carried a
     // changelog; the scaffold's ↵ (accepted) applies the update.
     ChangelogModal {
@@ -245,6 +252,9 @@ FloatingWindow {
             CapGap {}
             KeyCap { anchors.verticalCenter: parent.verticalCenter; text: "o" }
             CapLabel { anchors.verticalCenter: parent.verticalCenter; text: "open" }
+            CapGap {}
+            KeyCap { anchors.verticalCenter: parent.verticalCenter; text: "⌃o" }
+            CapLabel { anchors.verticalCenter: parent.verticalCenter; text: "details" }
             CapGap {}
             KeyCap { anchors.verticalCenter: parent.verticalCenter; text: "y" }
             KeyCap { anchors.verticalCenter: parent.verticalCenter; text: "m" }
@@ -409,6 +419,13 @@ FloatingWindow {
             // ⌃s: open + focus the account switcher (j/k move, ↵ select, esc close)
             if (ctrl && !(e.modifiers & Qt.ShiftModifier) && e.key === Qt.Key_S) {
                 acctDropdown.show(); e.accepted = true; return
+            }
+            // ⌃o on a calendar event: open its full detail (no joining).
+            if (ctrl && !(e.modifiers & Qt.ShiftModifier) && e.key === Qt.Key_O
+                    && win.calPane && !inConv && win.pane === "index") {
+                const ev = calview.current()
+                if (ev) eventModal.showEvent(ev)
+                e.accepted = true; return
             }
             // ⇧U: show "what's new" if the update carried a changelog, else apply
             // straight away. Gated on updateAvailable so it never shadows u=undo.

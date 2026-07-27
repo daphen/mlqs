@@ -446,7 +446,9 @@ Singleton {
             timeStr: ev.allDay ? "all day" : Qt.formatTime(s, "hh:mm") + "–" + Qt.formatTime(e, "hh:mm"),
             allDay: !!ev.allDay, meetLink: ev.meetLink || "", htmlLink: ev.htmlLink || "",
             myStatus: ev.myStatus || "", organizer: ev.organizer || "",
-            attendeeCount: (ev.attendees || []).length
+            attendeeCount: (ev.attendees || []).length,
+            description: ev.description || "",
+            attendeesJson: JSON.stringify(ev.attendees || [])
         }
     }
     function dayKey(d) {

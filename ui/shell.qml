@@ -335,6 +335,10 @@ FloatingWindow {
             CapGap {}
             KeyCap { anchors.verticalCenter: parent.verticalCenter; text: "/" }
             CapLabel { anchors.verticalCenter: parent.verticalCenter; text: "search" }
+            CapGap {}
+            KeyCap { anchors.verticalCenter: parent.verticalCenter; text: "s" }
+            CapLabel { anchors.verticalCenter: parent.verticalCenter; text: "summarize" }
+            Icon { anchors.verticalCenter: parent.verticalCenter; name: "sparkle-3"; width: 11; height: 11; color: Theme.fg_muted }
         }
         Row {
             // only for actual threads (>1 message) — a single message enters
@@ -365,6 +369,10 @@ FloatingWindow {
             CapGap {}
             KeyCap { anchors.verticalCenter: parent.verticalCenter; text: "i" }
             CapLabel { anchors.verticalCenter: parent.verticalCenter; text: "insert" }
+            CapGap {}
+            KeyCap { anchors.verticalCenter: parent.verticalCenter; text: "s" }
+            CapLabel { anchors.verticalCenter: parent.verticalCenter; text: "summarize" }
+            Icon { anchors.verticalCenter: parent.verticalCenter; name: "sparkle-3"; width: 11; height: 11; color: Theme.fg_muted }
             CapGap {}
             KeyCap { anchors.verticalCenter: parent.verticalCenter; text: "h" }
             CapLabel { anchors.verticalCenter: parent.verticalCenter; text: "back" }

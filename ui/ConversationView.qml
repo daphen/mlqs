@@ -963,13 +963,23 @@ Rectangle {
         height: 52; color: "transparent"
         Text {
             anchors.left: parent.left; anchors.leftMargin: 14
-            anchors.right: parent.right; anchors.rightMargin: 14
+            anchors.right: sumBtn.left; anchors.rightMargin: 12
             anchors.verticalCenter: parent.verticalCenter
             text: Backend.openConvSubject + (cv.hinting ? "   󰌒 " + (cv.hintBuf || "type label…") : "")
             color: Theme.fg; font.family: Theme.fontFamily
             font.hintingPreference: Font.PreferNoHinting
             font.pixelSize: 14; font.weight: 600
             elide: Text.ElideRight
+        }
+        // Summarize this thread (also `s`) — sparkle-3, matching dsqrd.
+        Icon {
+            id: sumBtn
+            name: "sparkle-3"; width: 16; height: 16
+            anchors.right: parent.right; anchors.rightMargin: 14
+            anchors.verticalCenter: parent.verticalCenter
+            color: sumHov.hovered ? Theme.fg : Theme.fg_muted
+            HoverHandler { id: sumHov }
+            TapHandler { onTapped: Backend.summarize("thread", Backend.openConvId) }
         }
         Rectangle { anchors.bottom: parent.bottom; width: parent.width; height: 1; color: Theme.hairlineSoft }
     }

@@ -79,6 +79,41 @@ Singleton {
         copyPulse = Date.now()
     }
 
+    // ── Summaries (ported from dsqrd) ──────────────────────────────────────
+    property string summaryText: ""
+    property bool   summaryLoading: false
+    property var    summarizeClis: []        // logged-in CLIs the setup guide offers
+    property string summaryScope: ""         // thread | message | inbox (for the modal)
+    property var    summaryIds: []           // inbox: the unread ids, for mark-all-read
+    signal summaryReady()
+    signal summarizeSetupNeeded()
+
+    // scope: "thread" (id=convId) | "message" (id=msgId, conv=convId) | "inbox"
+    // (uses the focused folder). One in-flight at a time.
+    function summarize(scope, id, conv) {
+        if (summaryLoading) return
+        summaryLoading = true
+        summaryTimeout.restart()
+        send({ type: "summarize", account: currentAccount, scope: scope,
+               id: id || "", conv: conv || "", folder: currentFolderId })
+    }
+    function summarizeEnableCli(cliId) { send({ type: "summarizeEnable", provider: cliId }) }
+    function summarizeEnableKey(provider, key) { send({ type: "summarizeEnable", provider: provider, api_key: key || "" }) }
+    // Mark every summarized unread conversation read, reusing the markread path.
+    function markAllRead(ids) {
+        if (!ids || !ids.length) return
+        for (const id of ids) {
+            send({ type: "markread", account: currentAccount, id: id, text: "true" })
+            setLocalRead(id, true)
+        }
+    }
+
+    // Safety net: if the daemon never replies (hung provider), drop the spinner.
+    Timer {
+        id: summaryTimeout; interval: 210000; repeat: false
+        onTriggered: { if (backend.summaryLoading) { backend.summaryLoading = false; backend.toast("Summarize timed out") } }
+    }
+
     // rich yank: file:// imgs become base64 data URIs so a paste into a
     // rich editor (gmail, slack) carries the images along
     readonly property string _inlineImgsPy:
@@ -671,6 +706,16 @@ Singleton {
             if ((e.text || "").indexOf("mlqs send") === 0)
                 messages = messages.map(m => m.sending ? Object.assign({}, m, { sending: false, failed: true }) : m)
             toast(e.text || "")
+        } else if (e.type === "summary") {
+            summaryLoading = false; summaryTimeout.stop()
+            summaryText = e.text || ""; summaryScope = e.scope || ""; summaryIds = e.ids || []
+            summaryReady()
+        } else if (e.type === "summaryError") {
+            summaryLoading = false; summaryTimeout.stop()
+            if (e.text) toast(e.text)
+        } else if (e.type === "summarizeSetup") {
+            summaryLoading = false; summaryTimeout.stop()
+            summarizeClis = e.clis || []; summarizeSetupNeeded()
         }
     }
 

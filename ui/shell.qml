@@ -161,6 +161,26 @@ FloatingWindow {
         onClosed: keys.forceActiveFocus()
     }
 
+    // AI summary + adaptive setup guide (QsLib, ported from dsqrd).
+    SummaryModal {
+        id: summaryModal
+        z: 103
+        onClosed: keys.forceActiveFocus()
+    }
+    SummarizeSetup {
+        id: summarizeSetup
+        z: 105
+        onClosed: keys.forceActiveFocus()
+    }
+    Connections {
+        target: Backend
+        function onSummaryReady() {
+            const meta = Backend.summaryScope === "inbox" ? Backend.currentFolderName : Backend.openConvSubject
+            summaryModal.showWith(Backend.summaryText, meta, Backend.summaryScope, Backend.summaryIds)
+        }
+        function onSummarizeSetupNeeded() { summarizeSetup.show() }
+    }
+
     FeedbackPill {
         id: toast
         anchors.horizontalCenter: parent.horizontalCenter
@@ -419,6 +439,18 @@ FloatingWindow {
             // ⌃s: open + focus the account switcher (j/k move, ↵ select, esc close)
             if (ctrl && !(e.modifiers & Qt.ShiftModifier) && e.key === Qt.Key_S) {
                 acctDropdown.show(); e.accepted = true; return
+            }
+            // AI summary (sparkle): S = the focused message; s = this thread (in a
+            // conversation) / the focused inbox (in the index). Gated off the g-goto
+            // prefix (gs/gS) and the calendar pane.
+            if (!ctrl && !win.gPending && (e.modifiers & Qt.ShiftModifier) && e.key === Qt.Key_S && inConv) {
+                const fm = conv.focusedMsg()
+                if (fm && fm.id) Backend.summarize("message", fm.id, Backend.openConvId)
+                e.accepted = true; return
+            }
+            if (!ctrl && !win.gPending && !(e.modifiers & Qt.ShiftModifier) && e.key === Qt.Key_S) {
+                if (inConv) { Backend.summarize("thread", Backend.openConvId); e.accepted = true; return }
+                if (!win.calPane && win.pane === "index") { Backend.summarize("inbox", ""); e.accepted = true; return }
             }
             // ⌃o on a calendar event: open its full detail (no joining).
             if (ctrl && !(e.modifiers & Qt.ShiftModifier) && e.key === Qt.Key_O

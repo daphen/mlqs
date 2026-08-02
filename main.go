@@ -40,6 +40,7 @@ import (
 	"mlqs/internal/notify"
 	"mlqs/internal/provider"
 	"mlqs/internal/sanitize"
+	"mlqs/internal/summarize"
 
 	"golang.org/x/term"
 )
@@ -370,6 +371,9 @@ type command struct {
 	ReplyTo string   `json:"replyTo"`
 	Conv    string   `json:"conv"`
 	Paths   []string `json:"paths"`
+	Scope   string   `json:"scope"`    // summarize: thread | message | inbox
+	Provider string  `json:"provider"` // summarizeEnable: cli id / openai / anthropic
+	APIKey   string  `json:"api_key"`  // summarizeEnable
 	Start   string   `json:"start"`
 	End     string   `json:"end"`
 	Meet    bool     `json:"meet"`
@@ -454,14 +458,141 @@ func (d *daemon) serve(conn net.Conn) {
 				}
 				d.notifier.InvokeByID(uint32(id), act)
 			}
+		case "summarizeEnable":
+			// config write (no provider needed) — handle inline, mirror dsqrd's
+			// summarizeEnable dispatch (openai / anthropic key, or a keyless cli).
+			prov := strings.ToLower(cmd.Provider)
+			var block config.SummarizeConfig
+			switch prov {
+			case "openai":
+				block = config.SummarizeConfig{BaseURL: "https://api.openai.com/v1", Model: "gpt-4o-mini", APIKey: cmd.APIKey}
+			case "anthropic":
+				block = config.SummarizeConfig{BaseURL: "https://api.anthropic.com/v1", Model: "claude-haiku-4-5", APIKey: cmd.APIKey}
+			default: // a keyless CLI id (claude-cli / codex-cli)
+				block = config.SummarizeConfig{Provider: prov}
+				if block.Provider == "" {
+					block.Provider = "claude-cli"
+				}
+				if block.Provider == "claude-cli" {
+					block.Model = "haiku"
+				}
+			}
+			if err := config.WriteSummarize(block); err != nil {
+				d.sendTo(conn, map[string]any{"type": "toast", "text": "Setup failed: " + err.Error()})
+			} else {
+				d.broadcast(map[string]any{"type": "toast", "text": "Summaries enabled — press the key again to summarize"})
+			}
 		case "folders", "conversations", "conversation", "openhtml", "openatt", "search", "threads", "contacts", "markread", "star", "archive", "unarchive", "trash", "untrash", "send",
-			"agenda", "rsvp", "rsvpmail", "createevent", "calendars":
+			"agenda", "rsvp", "rsvpmail", "createevent", "calendars", "summarize":
 			go d.handle(conn, cmd)
 		default:
 			d.sendTo(conn, map[string]any{"type": "toast",
 				"text": fmt.Sprintf("mlqs: %q not implemented yet", cmd.Type)})
 		}
 	}
+}
+
+var htmlTagRE = regexp.MustCompile(`(?s)<[^>]*>`)
+
+// summarizeGather builds the plain-text transcript for a summarize scope from
+// the EXISTING provider accessors (no new fetch paths). For "inbox" it also
+// returns the unread conversation ids so the summary screen can mark them read.
+func summarizeGather(ctx context.Context, p provider.Provider, scope, id, conv, folder string) (string, []string, error) {
+	switch scope {
+	case "message":
+		msgs, err := p.GetConversation(ctx, conv)
+		if err != nil {
+			return "", nil, err
+		}
+		for _, m := range msgs {
+			if m.ID == id {
+				return msgText(m), nil, nil
+			}
+		}
+		if len(msgs) > 0 {
+			return msgText(msgs[len(msgs)-1]), nil, nil
+		}
+		return "", nil, fmt.Errorf("message not found")
+	case "inbox":
+		var convs []provider.Conversation
+		cur := ""
+		for len(convs) < 50 {
+			pg, err := p.ListConversations(ctx, folder, cur, 50, true) // unreadOnly
+			if err != nil {
+				return "", nil, err
+			}
+			convs = append(convs, pg.Conversations...)
+			if pg.NextCursor == "" {
+				break
+			}
+			cur = pg.NextCursor
+		}
+		if len(convs) > 50 {
+			convs = convs[:50]
+		}
+		if len(convs) == 0 {
+			return "", nil, fmt.Errorf("no unread messages")
+		}
+		ids := make([]string, 0, len(convs))
+		var b strings.Builder
+		for _, c := range convs {
+			ids = append(ids, c.ID)
+			sender := ""
+			if len(c.Senders) > 0 {
+				sender = addrName(c.Senders[0])
+			}
+			fmt.Fprintf(&b, "- %s — %s: %s\n", sender, c.Subject, strings.Join(strings.Fields(c.Snippet), " "))
+		}
+		return b.String(), ids, nil
+	default: // "thread"
+		msgs, err := p.GetConversation(ctx, id)
+		if err != nil {
+			return "", nil, err
+		}
+		if len(msgs) == 0 {
+			return "", nil, fmt.Errorf("empty thread")
+		}
+		var b strings.Builder
+		for i, m := range msgs {
+			if i == 0 && m.Subject != "" {
+				fmt.Fprintf(&b, "Subject: %s\n\n", m.Subject)
+			}
+			fmt.Fprintf(&b, "%s (%s):\n%s\n\n", addrName(m.From), m.Date.Format("Jan 2 15:04"), bodyPlain(m))
+		}
+		return b.String(), nil, nil
+	}
+}
+
+func msgText(m provider.Message) string {
+	var b strings.Builder
+	if m.Subject != "" {
+		fmt.Fprintf(&b, "Subject: %s\n", m.Subject)
+	}
+	fmt.Fprintf(&b, "From: %s (%s)\n\n%s\n", addrName(m.From), m.Date.Format("Jan 2 15:04"), bodyPlain(m))
+	return b.String()
+}
+
+// bodyPlain returns a message's body as plain text for the LLM: the text/plain
+// part when present, else a crude tag-strip of the HTML, capped.
+func bodyPlain(m provider.Message) string {
+	s := strings.TrimSpace(m.BodyText)
+	if s == "" && m.BodyHTML != "" {
+		s = strings.Join(strings.Fields(stdhtml.UnescapeString(htmlTagRE.ReplaceAllString(m.BodyHTML, " "))), " ")
+	}
+	if s == "" {
+		s = m.Snippet
+	}
+	if len(s) > 4000 {
+		s = s[:4000] + "…"
+	}
+	return s
+}
+
+func addrName(a provider.Address) string {
+	if a.Name != "" {
+		return a.Name
+	}
+	return a.Email
 }
 
 // handle proxies provider calls per command. Live API reads for now; the
@@ -494,6 +625,33 @@ func (d *daemon) handle(conn net.Conn, cmd command) {
 		}
 		d.db.UpsertFolders(cmd.Account, fs)
 		d.sendTo(conn, map[string]any{"type": "folders", "account": cmd.Account, "folders": fs})
+	case "summarize":
+		cfg, _ := config.Load()
+		var sc config.SummarizeConfig
+		if cfg != nil && cfg.Summarize != nil {
+			sc = *cfg.Summarize
+		}
+		if sc.Provider == "" && sc.BaseURL == "" {
+			d.broadcast(map[string]any{"type": "summarizeSetup", "clis": summarize.AvailableCLIs()})
+			return
+		}
+		text, ids, gerr := summarizeGather(ctx, p, cmd.Scope, cmd.ID, cmd.Conv, cmd.Folder)
+		if gerr != nil {
+			d.broadcast(map[string]any{"type": "summaryError", "text": gerr.Error()})
+			return
+		}
+		// The LLM call gets its own (long) timeout inside the summarize pkg, not
+		// handle's 60s ctx.
+		out, serr := summarize.Summarize(context.Background(), sc, text)
+		if serr != nil {
+			d.broadcast(map[string]any{"type": "summaryError", "text": serr.Error()})
+			return
+		}
+		ev := map[string]any{"type": "summary", "text": out, "scope": cmd.Scope}
+		if cmd.Scope == "inbox" {
+			ev["ids"] = ids
+		}
+		d.broadcast(ev)
 	case "conversations":
 		if cmd.Cursor != "" {
 			pg, err := p.ListConversations(ctx, cmd.Folder, cmd.Cursor, 50, false)

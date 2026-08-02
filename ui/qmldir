@@ -7,3 +7,5 @@ CalendarView CalendarView.qml
 EventComposer EventComposer.qml
 EventModal EventModal.qml
 CheatSheet CheatSheet.qml
+SummaryModal SummaryModal.qml
+SummarizeSetup SummarizeSetup.qml

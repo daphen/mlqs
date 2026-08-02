@@ -39,6 +39,7 @@ Modal {
             [["x"], "Star"], [["e"], "Archive"], [["d", "d"], "Trash"], [["u"], "Undo last remove"],
             [["v"], "Visual select"], [["r"], "Toggle read"], [["⇧r"], "Refresh"],
             [["⇧u"], "Apply update (when available)"],
+            [["s"], "Summarize inbox (AI)"],
             [["n"], "Compose"], [["/"], "Search"], [["q"], "Hide window"],
         ]},
         { title: "Go to", rows: [
@@ -55,6 +56,7 @@ Modal {
             [["m"], "RSVP tentative"], [["n"], "RSVP decline"],
             [["i"], "Reply"], [["a"], "Toggle reply-all"], [["r"], "Reply to focused"],
             [["⇧f"], "Forward"], [["f"], "Link hints"], [["o"], "Open in browser"],
+            [["s"], "Summarize thread (AI)"], [["⇧s"], "Summarize message (AI)"],
             [["e"], "Archive"], [["d", "d"], "Trash"],
             [["h"], "Close"], [["q"], "Back to inbox"],
         ]},

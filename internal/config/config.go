@@ -43,7 +43,18 @@ type Account struct {
 }
 
 type Config struct {
-	Accounts []Account `json:"accounts"`
+	Accounts  []Account        `json:"accounts"`
+	Summarize *SummarizeConfig `json:"summarize,omitempty"`
+}
+
+// SummarizeConfig is the optional "summarize" block in accounts.json: a keyless
+// CLI ({provider, model}) or an OpenAI-compatible endpoint ({base_url, model,
+// api_key}). Mirrors dsqrd's profiles.json summarize block.
+type SummarizeConfig struct {
+	Provider string `json:"provider,omitempty"`
+	Model    string `json:"model,omitempty"`
+	BaseURL  string `json:"base_url,omitempty"`
+	APIKey   string `json:"api_key,omitempty"`
 }
 
 func Path() string {
@@ -68,6 +79,34 @@ func Load() (*Config, error) {
 		return nil, fmt.Errorf("parsing %s: %w", Path(), err)
 	}
 	return &c, nil
+}
+
+// WriteSummarize merges a summarize block into accounts.json, preserving every
+// other key (accounts, etc.); atomic tmp+rename. Mirrors dsqrd's
+// _write_summarize_cfg — the one-click-setup writer. 0600 since it may hold a key.
+func WriteSummarize(block SummarizeConfig) error {
+	p := Path()
+	m := map[string]json.RawMessage{}
+	if b, err := os.ReadFile(p); err == nil {
+		_ = json.Unmarshal(b, &m) // tolerate an absent/empty file
+	}
+	bb, err := json.Marshal(block)
+	if err != nil {
+		return err
+	}
+	m["summarize"] = bb
+	out, err := json.MarshalIndent(m, "", "  ")
+	if err != nil {
+		return err
+	}
+	if err := os.MkdirAll(filepath.Dir(p), 0755); err != nil {
+		return err
+	}
+	tmp := p + ".tmp"
+	if err := os.WriteFile(tmp, out, 0600); err != nil {
+		return err
+	}
+	return os.Rename(tmp, p)
 }
 
 func (c *Config) Account(name string) (Account, error) {

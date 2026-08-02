@@ -72,6 +72,7 @@ Rectangle {
         height: 52
         // new-message button (reference: circular quill, header right)
         Rectangle {
+            id: composeBtn
             anchors.right: parent.right; anchors.rightMargin: 6
             anchors.verticalCenter: parent.verticalCenter
             width: 36; height: 36; radius: 18
@@ -83,6 +84,33 @@ Rectangle {
             }
             HoverHandler { cursorShape: Qt.PointingHandCursor }
             TapHandler { onTapped: bar.composeRequested() }
+        }
+        // summarize the current context (open thread, else inbox); the sparkle
+        // swaps to a spinner while a summary is in flight (same as the `s` key).
+        Rectangle {
+            anchors.right: composeBtn.left; anchors.rightMargin: 8
+            anchors.verticalCenter: parent.verticalCenter
+            width: 36; height: 36; radius: 18
+            color: Theme.mode === "light" ? Theme.bg : Theme.surface2
+            border.width: 1; border.color: sumHov.hovered ? Theme.fg_muted : Theme.hairline
+            Icon {
+                visible: !Backend.summaryLoading
+                anchors.centerIn: parent; width: 16; height: 16
+                name: "sparkle-3"; color: Theme.fg
+            }
+            Spinner {
+                visible: Backend.summaryLoading
+                anchors.centerIn: parent
+                running: Backend.summaryLoading; color: Theme.fg
+            }
+            HoverHandler { id: sumHov; cursorShape: Qt.PointingHandCursor }
+            TapHandler {
+                enabled: !Backend.summaryLoading
+                onTapped: {
+                    if (Backend.openConvId !== "") Backend.summarize("thread", Backend.openConvId)
+                    else Backend.summarize("inbox", "")
+                }
+            }
         }
         // account selector: one pill that opens the accounts dropdown. Replaces
         // the tab row that overflowed under the compose button with 3+ accounts.

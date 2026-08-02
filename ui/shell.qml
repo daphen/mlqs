@@ -251,6 +251,37 @@ FloatingWindow {
             HoverHandler { cursorShape: Qt.PointingHandCursor }
             TapHandler { onTapped: cheatSheet.show() }
         }
+        // Summarize affordance — a visible sparkle button (context: this thread /
+        // this inbox, same as the `s` key) that doubles as the working indicator
+        // (spinner) while a summary is in flight. Yields the slot to the update banner.
+        Row {
+            id: sumAffordance
+            visible: !Backend.updateAvailable && Backend.currentFolderId !== "__calendar"
+            anchors.right: helpBadge.left; anchors.rightMargin: 16
+            anchors.verticalCenter: parent.verticalCenter
+            spacing: 6
+            Spinner {
+                visible: Backend.summaryLoading; anchors.verticalCenter: parent.verticalCenter
+                running: Backend.summaryLoading; color: Theme.fg_muted
+            }
+            Icon {
+                visible: !Backend.summaryLoading; anchors.verticalCenter: parent.verticalCenter
+                name: "sparkle-3"; width: 14; height: 14
+                color: sumHov.hovered ? Theme.fg : Theme.fg_muted
+            }
+            CapLabel {
+                anchors.verticalCenter: parent.verticalCenter
+                text: Backend.summaryLoading ? "summarizing…" : "summarize"
+            }
+            HoverHandler { id: sumHov; cursorShape: Qt.PointingHandCursor }
+            TapHandler {
+                enabled: !Backend.summaryLoading
+                onTapped: {
+                    if (Backend.openConvId !== "") Backend.summarize("thread", Backend.openConvId)
+                    else Backend.summarize("inbox", "")
+                }
+            }
+        }
         // Update banner: detect-only (the host applies via flake bump + rebuild),
         // takes over the hint slot when a newer build exists.
         Text { 

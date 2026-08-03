@@ -374,7 +374,8 @@ type command struct {
 	Scope    string  `json:"scope"`    // summarize: thread | message | inbox
 	Provider string  `json:"provider"` // summarizeEnable: cli id / openai / anthropic
 	APIKey   string  `json:"api_key"`  // summarizeEnable
-	Question string  `json:"question"` // summarize: a follow-up Q&A over the same content
+	Question string  `json:"question"` // summarize: framing (initial) or a follow-up question
+	Followup bool    `json:"followup"` // summarize: true = Q&A append; false = the (framed) summary
 	Start   string   `json:"start"`
 	End     string   `json:"end"`
 	Meet    bool     `json:"meet"`
@@ -643,7 +644,9 @@ func (d *daemon) handle(conn net.Conn, cmd command) {
 		}
 		// Follow-up question: answer over the SAME transcript (a Q&A turn), not a
 		// fresh summary. The LLM call gets its own long timeout in the summarize pkg.
-		if cmd.Question != "" {
+		// A follow-up question appends as Q&A; an initial framing (or empty)
+		// comes back as the summary itself.
+		if cmd.Question != "" && cmd.Followup {
 			ans, aerr := summarize.Ask(context.Background(), sc, text, cmd.Question)
 			if aerr != nil {
 				d.broadcast(map[string]any{"type": "summaryError", "text": aerr.Error()})
@@ -652,12 +655,21 @@ func (d *daemon) handle(conn net.Conn, cmd command) {
 			d.broadcast(map[string]any{"type": "summaryAnswer", "question": cmd.Question, "text": ans})
 			return
 		}
-		out, serr := summarize.Summarize(context.Background(), sc, text)
+		var out string
+		var serr error
+		if cmd.Question != "" {
+			out, serr = summarize.Ask(context.Background(), sc, text, cmd.Question) // framed summary
+		} else {
+			out, serr = summarize.Summarize(context.Background(), sc, text) // default recap
+		}
 		if serr != nil {
 			d.broadcast(map[string]any{"type": "summaryError", "text": serr.Error()})
 			return
 		}
 		ev := map[string]any{"type": "summary", "text": out, "scope": cmd.Scope}
+		if cmd.Question != "" {
+			ev["framing"] = cmd.Question
+		}
 		if cmd.Scope == "inbox" {
 			ev["ids"] = ids
 		}

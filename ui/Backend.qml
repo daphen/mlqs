@@ -87,20 +87,31 @@ Singleton {
     property var    summaryIds: []           // inbox: the unread ids, for mark-all-read
     property var    summaryQA: []            // conversational follow-ups: [{q, a}]
     property bool   summaryAsking: false     // a follow-up question is in flight
+    property string summaryFraming: ""       // the user's framing for a custom summary (title)
     property var    _askCtx: ({})            // {scope,id,conv,folder} of the current summary
     signal summaryReady()
     signal summarizeSetupNeeded()
+    signal summarizePromptNeeded(string meta)   // open the modal's framing input
 
     // scope: "thread" (id=convId) | "message" (id=msgId, conv=convId) | "inbox"
     // (uses the focused folder). One in-flight at a time.
+    // Trigger the summary flow: open the modal on a framing input (↵ = default
+    // recap, or type a framing like "action points"). Doesn't call the model yet.
     function summarize(scope, id, conv) {
         if (summaryLoading) return
-        summaryLoading = true
-        summaryQA = []
         _askCtx = { scope: scope, id: id || "", conv: conv || "", folder: currentFolderId }
+        summaryText = ""; summaryFraming = ""; summaryQA = []; summaryScope = scope; summaryIds = []
+        summarizePromptNeeded(scope === "inbox" ? currentFolderName : openConvSubject)
+    }
+    // Run the initial summary — empty framing → default recap, else a framed one.
+    function summarizeRun(framing) {
+        if (summaryLoading) return
+        summaryLoading = true
+        summaryFraming = ("" + (framing || "")).trim()
         summaryTimeout.restart()
-        send({ type: "summarize", account: currentAccount, scope: scope,
-               id: id || "", conv: conv || "", folder: currentFolderId })
+        send({ type: "summarize", account: currentAccount, scope: _askCtx.scope,
+               id: _askCtx.id, conv: _askCtx.conv, folder: _askCtx.folder,
+               question: summaryFraming, followup: false })
     }
     // Ask a free-text question about the current summary's content — reuses the
     // same scope/id so the daemon rebuilds the identical transcript.
@@ -111,7 +122,7 @@ Singleton {
         summaryQA = summaryQA.concat([{ q: q, a: "" }])
         summaryTimeout.restart()
         send({ type: "summarize", account: currentAccount, scope: _askCtx.scope,
-               id: _askCtx.id, conv: _askCtx.conv, folder: _askCtx.folder, question: q })
+               id: _askCtx.id, conv: _askCtx.conv, folder: _askCtx.folder, question: q, followup: true })
     }
     function summarizeEnableCli(cliId) { send({ type: "summarizeEnable", provider: cliId }) }
     function summarizeEnableKey(provider, key) { send({ type: "summarizeEnable", provider: provider, api_key: key || "" }) }
@@ -730,6 +741,7 @@ Singleton {
         } else if (e.type === "summary") {
             summaryLoading = false; summaryTimeout.stop()
             summaryText = e.text || ""; summaryScope = e.scope || ""; summaryIds = e.ids || []
+            summaryFraming = e.framing || ""
             summaryQA = []
             summaryReady()
         } else if (e.type === "summaryAnswer") {

@@ -14,6 +14,7 @@ Modal {
     property string meta: "SUMMARY"
     property string scope: ""
     property var ids: []
+    property string framing: ""
     property int sel: 0
     panelWidth: Math.round(Math.min(860, sm.width - 64))
     maxHeightFrac: 0.72
@@ -23,13 +24,21 @@ Modal {
     readonly property string fgHex: "" + Theme.fg
     readonly property var cats: sm._cats(sm.text)
 
-    function showWith(t, metaText, scopeName, idList) {
+    function showWith(t, metaText, scopeName, idList, framingText) {
         text = t || ""
         meta = (metaText && metaText.length) ? ("" + metaText).toUpperCase() : "SUMMARY"
         scope = scopeName || ""
         ids = idList || []
+        framing = framingText || ""
         sel = 0
         show()
+    }
+    // Open on a framing input first (↵ = default recap, or type a framing).
+    function openFraming(metaText) {
+        meta = (metaText && metaText.length) ? ("" + metaText).toUpperCase() : "SUMMARY"
+        text = ""; framing = ""; scope = ""; ids = []; sel = 0
+        show()
+        Qt.callLater(function() { askInput.forceActiveFocus() })
     }
 
     function _inline(s) {
@@ -140,7 +149,8 @@ Modal {
         Text {
             id: hTitle
             anchors.left: parent.left; anchors.bottom: parent.bottom; anchors.bottomMargin: -2
-            text: "Summary"; color: Theme.fg
+            text: sm.framing !== "" ? (sm.framing.length > 48 ? sm.framing.slice(0, 48) + "…" : sm.framing) : "Summary"
+            color: Theme.fg
             font.family: sm.titleFont; font.pixelSize: 34; font.weight: 400
             font.letterSpacing: -0.3
         }
@@ -353,13 +363,16 @@ Modal {
                 anchors.fill: parent; anchors.leftMargin: 34; anchors.rightMargin: 12
                 verticalAlignment: TextInput.AlignVCenter
                 color: Theme.fg; clip: true; selectByMouse: true
-                enabled: !Backend.summaryAsking
+                enabled: !Backend.summaryAsking && !Backend.summaryLoading
                 font.family: Theme.fontFamily; font.pixelSize: 14
-                onAccepted: { Backend.summarizeAsk(text); text = "" }
+                onAccepted: { if (sm.text === "") { sm.framing = text; Backend.summarizeRun(text) } else Backend.summarizeAsk(text); text = "" }
                 Keys.onEscapePressed: askInput.focus = false
                 Text {
                     visible: !askInput.text; anchors.verticalCenter: parent.verticalCenter
-                    text: Backend.summaryAsking ? "thinking…" : "Ask about this…  (i)"
+                    text: Backend.summaryLoading ? "Summarizing…"
+                        : Backend.summaryAsking ? "thinking…"
+                        : sm.text === "" ? "Frame it, or ↵ for a full recap…"
+                        : "Ask a follow-up…  (i)"
                     color: Theme.fg_muted; font: askInput.font
                 }
             }

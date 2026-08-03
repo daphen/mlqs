@@ -174,9 +174,10 @@ FloatingWindow {
     }
     Connections {
         target: Backend
+        function onSummarizePromptNeeded(meta) { summaryModal.openFraming(meta) }
         function onSummaryReady() {
             const meta = Backend.summaryScope === "inbox" ? Backend.currentFolderName : Backend.openConvSubject
-            summaryModal.showWith(Backend.summaryText, meta, Backend.summaryScope, Backend.summaryIds)
+            summaryModal.showWith(Backend.summaryText, meta, Backend.summaryScope, Backend.summaryIds, Backend.summaryFraming)
         }
         function onSummarizeSetupNeeded() { summarizeSetup.show() }
     }

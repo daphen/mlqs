@@ -376,6 +376,7 @@ type command struct {
 	APIKey   string  `json:"api_key"`  // summarizeEnable
 	Question string  `json:"question"` // summarize: framing (initial) or a follow-up question
 	Followup bool    `json:"followup"` // summarize: true = Q&A append; false = the (framed) summary
+	IDs      []string `json:"ids"`     // summarize scope "selection": the picked conversation ids
 	Start   string   `json:"start"`
 	End     string   `json:"end"`
 	Meet    bool     `json:"meet"`
@@ -499,8 +500,36 @@ var htmlTagRE = regexp.MustCompile(`(?s)<[^>]*>`)
 // summarizeGather builds the plain-text transcript for a summarize scope from
 // the EXISTING provider accessors (no new fetch paths). For "inbox" it also
 // returns the unread conversation ids so the summary screen can mark them read.
-func summarizeGather(ctx context.Context, p provider.Provider, scope, id, conv, folder string) (string, []string, error) {
+func summarizeGather(ctx context.Context, p provider.Provider, scope, id, conv, folder string, ids []string) (string, []string, error) {
 	switch scope {
+	case "selection":
+		if len(ids) == 0 {
+			return "", nil, fmt.Errorf("nothing selected")
+		}
+		sel := ids
+		if len(sel) > 15 {
+			sel = sel[:15] // cap the fan-out
+		}
+		var b strings.Builder
+		for _, cid := range sel {
+			msgs, err := p.GetConversation(ctx, cid)
+			if err != nil || len(msgs) == 0 {
+				continue
+			}
+			fmt.Fprintf(&b, "── %s ──\n", msgs[0].Subject)
+			for _, m := range msgs {
+				body := bodyPlain(m)
+				if len(body) > 400 {
+					body = body[:400] + "…"
+				}
+				fmt.Fprintf(&b, "%s: %s\n", addrName(m.From), strings.Join(strings.Fields(body), " "))
+			}
+			b.WriteString("\n")
+		}
+		if b.Len() == 0 {
+			return "", nil, fmt.Errorf("could not read the selected threads")
+		}
+		return b.String(), ids, nil
 	case "message":
 		msgs, err := p.GetConversation(ctx, conv)
 		if err != nil {
@@ -637,7 +666,7 @@ func (d *daemon) handle(conn net.Conn, cmd command) {
 			d.broadcast(map[string]any{"type": "summarizeSetup", "clis": summarize.AvailableCLIs()})
 			return
 		}
-		text, ids, gerr := summarizeGather(ctx, p, cmd.Scope, cmd.ID, cmd.Conv, cmd.Folder)
+		text, ids, gerr := summarizeGather(ctx, p, cmd.Scope, cmd.ID, cmd.Conv, cmd.Folder, cmd.IDs)
 		if gerr != nil {
 			d.broadcast(map[string]any{"type": "summaryError", "text": gerr.Error()})
 			return
@@ -670,7 +699,7 @@ func (d *daemon) handle(conn net.Conn, cmd command) {
 		if cmd.Question != "" {
 			ev["framing"] = cmd.Question
 		}
-		if cmd.Scope == "inbox" {
+		if cmd.Scope == "inbox" || cmd.Scope == "selection" {
 			ev["ids"] = ids
 		}
 		d.broadcast(ev)

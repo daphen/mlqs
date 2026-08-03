@@ -345,6 +345,10 @@ FloatingWindow {
             KeyCap { anchors.verticalCenter: parent.verticalCenter; text: "x" }
             CapLabel { anchors.verticalCenter: parent.verticalCenter; text: "star" }
             CapGap {}
+            KeyCap { anchors.verticalCenter: parent.verticalCenter; text: "s" }
+            CapLabel { anchors.verticalCenter: parent.verticalCenter; text: "summarize" }
+            Icon { anchors.verticalCenter: parent.verticalCenter; name: "sparkle-3"; width: 11; height: 11; color: Theme.fg_muted }
+            CapGap {}
             KeyCap { anchors.verticalCenter: parent.verticalCenter; text: "esc" }
             CapLabel { anchors.verticalCenter: parent.verticalCenter; text: "cancel" }
         }
@@ -527,6 +531,7 @@ FloatingWindow {
                 case Qt.Key_D: Backend.batchTrash(index.selIds()); index.visualEnd(); break
                 case Qt.Key_R: Backend.batchRead(index.selRows()); index.visualEnd(); break
                 case Qt.Key_X: Backend.batchStar(index.selRows()); index.visualEnd(); break
+                case Qt.Key_S: { const sel = index.selIds(); index.visualEnd(); Backend.summarizeSelection(sel); break }
                 case Qt.Key_Escape:
                 case Qt.Key_V:
                 case Qt.Key_Q: index.visualEnd(); break

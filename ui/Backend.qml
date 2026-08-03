@@ -99,9 +99,16 @@ Singleton {
     // recap, or type a framing like "action points"). Doesn't call the model yet.
     function summarize(scope, id, conv) {
         if (summaryLoading) return
-        _askCtx = { scope: scope, id: id || "", conv: conv || "", folder: currentFolderId }
+        _askCtx = { scope: scope, id: id || "", conv: conv || "", folder: currentFolderId, ids: [] }
         summaryText = ""; summaryFraming = ""; summaryQA = []; summaryScope = scope; summaryIds = []
         summarizePromptNeeded(scope === "inbox" ? currentFolderName : openConvSubject)
+    }
+    // Summarize/ask about a visual-mode selection of conversations.
+    function summarizeSelection(ids) {
+        if (summaryLoading || !ids || !ids.length) return
+        _askCtx = { scope: "selection", id: "", conv: "", folder: currentFolderId, ids: ids }
+        summaryText = ""; summaryFraming = ""; summaryQA = []; summaryScope = "selection"; summaryIds = ids
+        summarizePromptNeeded(ids.length + " selected")
     }
     // Run the initial summary — empty framing → default recap, else a framed one.
     function summarizeRun(framing) {
@@ -110,7 +117,7 @@ Singleton {
         summaryFraming = ("" + (framing || "")).trim()
         summaryTimeout.restart()
         send({ type: "summarize", account: currentAccount, scope: _askCtx.scope,
-               id: _askCtx.id, conv: _askCtx.conv, folder: _askCtx.folder,
+               id: _askCtx.id, conv: _askCtx.conv, folder: _askCtx.folder, ids: _askCtx.ids || [],
                question: summaryFraming, followup: false })
     }
     // Ask a free-text question about the current summary's content — reuses the
@@ -122,7 +129,7 @@ Singleton {
         summaryQA = summaryQA.concat([{ q: q, a: "" }])
         summaryTimeout.restart()
         send({ type: "summarize", account: currentAccount, scope: _askCtx.scope,
-               id: _askCtx.id, conv: _askCtx.conv, folder: _askCtx.folder, question: q, followup: true })
+               id: _askCtx.id, conv: _askCtx.conv, folder: _askCtx.folder, ids: _askCtx.ids || [], question: q, followup: true })
     }
     function summarizeEnableCli(cliId) { send({ type: "summarizeEnable", provider: cliId }) }
     function summarizeEnableKey(provider, key) { send({ type: "summarizeEnable", provider: provider, api_key: key || "" }) }

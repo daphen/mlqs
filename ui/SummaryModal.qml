@@ -127,7 +127,7 @@ Modal {
         flick.contentY = Math.max(0, flick.contentHeight - flick.height)
     }
 
-    readonly property bool canMarkRead: sm.scope === "inbox" && sm.ids.length > 0
+    readonly property bool canMarkRead: (sm.scope === "inbox" || sm.scope === "selection") && sm.ids.length > 0
 
     onKeyPressed: e => {
         if (askInput.activeFocus) return

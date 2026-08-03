@@ -63,6 +63,7 @@ Modal {
         { title: "Visual — index", rows: [
             [["j", "k"], "Extend selection"], [["e"], "Archive selection"],
             [["d"], "Trash selection"], [["r"], "Mark read"], [["x"], "Star"],
+            [["s"], "Summarize selection (AI)"],
             [["⌃d", "⌃u"], "Half-page (extends)"], [["esc"], "Exit"],
         ]},
         { title: "Message cursor", rows: [

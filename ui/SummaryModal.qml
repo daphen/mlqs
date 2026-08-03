@@ -196,14 +196,6 @@ Modal {
         width: parent.width
         topPadding: 8
         spacing: 6
-        // working text while the initial summary generates (body is empty); the
-        // spinner is in the input, so this just animates a three-dot ellipsis.
-        Text {
-            visible: Backend.summaryLoading
-            topPadding: 4; leftPadding: 2
-            text: (sm.framing !== "" ? "Working on it" : "Summarizing") + sm._dots
-            color: Theme.fg_muted; font.family: Theme.fontFamily; font.pixelSize: 14
-        }
         Repeater {
             id: catRepeater
             model: sm.cats
@@ -345,11 +337,6 @@ Modal {
                         }
                     }
                 }
-                Text {
-                    visible: ("" + (modelData.a || "")) === ""
-                    leftPadding: 4; text: "thinking" + sm._dots; color: Theme.fg_muted
-                    font.family: Theme.fontFamily; font.pixelSize: 13
-                }
             }
         }
         // ask input — press `i` to focus, ↵ to send, esc to blur
@@ -381,7 +368,8 @@ Modal {
                 Keys.onEscapePressed: askInput.focus = false
                 Text {
                     visible: !askInput.text; anchors.verticalCenter: parent.verticalCenter
-                    text: (Backend.summaryLoading || Backend.summaryAsking) ? ""
+                    text: Backend.summaryLoading ? ((sm.framing !== "" ? "Working on it" : "Summarizing") + sm._dots)
+                        : Backend.summaryAsking ? ("thinking" + sm._dots)
                         : sm.text === "" ? "Ask, or ↵ for a full recap"
                         : "Ask a follow-up…  (i)"
                     color: Theme.fg_muted; font: askInput.font

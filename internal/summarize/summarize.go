@@ -84,15 +84,30 @@ func AvailableCLIs() []CLI {
 	return out
 }
 
+// ASK_SYS is the system prompt for a follow-up question over the same content.
+const ASK_SYS = "You answer a question about the email below, using only its " +
+	"content. Be concise and specific; name senders where it matters. If the " +
+	"answer isn't in the content, say so plainly. Reply in the same language as " +
+	"the email. GitHub-flavored markdown is fine (bold leads, `- ` bullets)."
+
 // Summarize dispatches to the configured provider (dsqrd's _llm_summarize).
 func Summarize(ctx context.Context, cfg config.SummarizeConfig, transcript string) (string, error) {
+	return run(ctx, cfg, SUMMARIZE_SYS, "Email:\n"+transcript)
+}
+
+// Ask answers a free-text question over the same transcript.
+func Ask(ctx context.Context, cfg config.SummarizeConfig, transcript, question string) (string, error) {
+	return run(ctx, cfg, ASK_SYS, "Email:\n"+transcript+"\n\nQuestion: "+question)
+}
+
+func run(ctx context.Context, cfg config.SummarizeConfig, sys, user string) (string, error) {
 	switch strings.ToLower(cfg.Provider) {
 	case "claude-cli":
-		return claudeCLI(ctx, cfg, SUMMARIZE_SYS+"\n\nEmail:\n"+transcript)
+		return claudeCLI(ctx, cfg, sys+"\n\n"+user)
 	case "codex-cli":
-		return codexCLI(ctx, cfg, SUMMARIZE_SYS+"\n\nEmail:\n"+transcript)
+		return codexCLI(ctx, cfg, sys+"\n\n"+user)
 	}
-	return openAICompat(ctx, cfg, transcript)
+	return openAICompat(ctx, cfg, sys, user)
 }
 
 func claudeCLI(ctx context.Context, cfg config.SummarizeConfig, prompt string) (string, error) {
@@ -161,7 +176,7 @@ func codexCLI(ctx context.Context, cfg config.SummarizeConfig, prompt string) (s
 	return "", fmt.Errorf("%s", tail(msg, 200))
 }
 
-func openAICompat(ctx context.Context, cfg config.SummarizeConfig, transcript string) (string, error) {
+func openAICompat(ctx context.Context, cfg config.SummarizeConfig, sys, user string) (string, error) {
 	if cfg.BaseURL == "" {
 		return "", fmt.Errorf("no summarize provider configured")
 	}
@@ -173,8 +188,8 @@ func openAICompat(ctx context.Context, cfg config.SummarizeConfig, transcript st
 		"model":      model,
 		"max_tokens": 2048,
 		"messages": []map[string]string{
-			{"role": "system", "content": SUMMARIZE_SYS},
-			{"role": "user", "content": "Email:\n" + transcript},
+			{"role": "system", "content": sys},
+			{"role": "user", "content": user},
 		},
 	})
 	cctx, cancel := context.WithTimeout(ctx, 120*time.Second)

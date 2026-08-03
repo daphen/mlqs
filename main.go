@@ -371,9 +371,10 @@ type command struct {
 	ReplyTo string   `json:"replyTo"`
 	Conv    string   `json:"conv"`
 	Paths   []string `json:"paths"`
-	Scope   string   `json:"scope"`    // summarize: thread | message | inbox
+	Scope    string  `json:"scope"`    // summarize: thread | message | inbox
 	Provider string  `json:"provider"` // summarizeEnable: cli id / openai / anthropic
 	APIKey   string  `json:"api_key"`  // summarizeEnable
+	Question string  `json:"question"` // summarize: a follow-up Q&A over the same content
 	Start   string   `json:"start"`
 	End     string   `json:"end"`
 	Meet    bool     `json:"meet"`
@@ -640,8 +641,17 @@ func (d *daemon) handle(conn net.Conn, cmd command) {
 			d.broadcast(map[string]any{"type": "summaryError", "text": gerr.Error()})
 			return
 		}
-		// The LLM call gets its own (long) timeout inside the summarize pkg, not
-		// handle's 60s ctx.
+		// Follow-up question: answer over the SAME transcript (a Q&A turn), not a
+		// fresh summary. The LLM call gets its own long timeout in the summarize pkg.
+		if cmd.Question != "" {
+			ans, aerr := summarize.Ask(context.Background(), sc, text, cmd.Question)
+			if aerr != nil {
+				d.broadcast(map[string]any{"type": "summaryError", "text": aerr.Error()})
+				return
+			}
+			d.broadcast(map[string]any{"type": "summaryAnswer", "question": cmd.Question, "text": ans})
+			return
+		}
 		out, serr := summarize.Summarize(context.Background(), sc, text)
 		if serr != nil {
 			d.broadcast(map[string]any{"type": "summaryError", "text": serr.Error()})

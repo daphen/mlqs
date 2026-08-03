@@ -85,6 +85,9 @@ Singleton {
     property var    summarizeClis: []        // logged-in CLIs the setup guide offers
     property string summaryScope: ""         // thread | message | inbox (for the modal)
     property var    summaryIds: []           // inbox: the unread ids, for mark-all-read
+    property var    summaryQA: []            // conversational follow-ups: [{q, a}]
+    property bool   summaryAsking: false     // a follow-up question is in flight
+    property var    _askCtx: ({})            // {scope,id,conv,folder} of the current summary
     signal summaryReady()
     signal summarizeSetupNeeded()
 
@@ -93,9 +96,22 @@ Singleton {
     function summarize(scope, id, conv) {
         if (summaryLoading) return
         summaryLoading = true
+        summaryQA = []
+        _askCtx = { scope: scope, id: id || "", conv: conv || "", folder: currentFolderId }
         summaryTimeout.restart()
         send({ type: "summarize", account: currentAccount, scope: scope,
                id: id || "", conv: conv || "", folder: currentFolderId })
+    }
+    // Ask a free-text question about the current summary's content — reuses the
+    // same scope/id so the daemon rebuilds the identical transcript.
+    function summarizeAsk(question) {
+        const q = ("" + (question || "")).trim()
+        if (!q || summaryAsking || !_askCtx.scope) return
+        summaryAsking = true
+        summaryQA = summaryQA.concat([{ q: q, a: "" }])
+        summaryTimeout.restart()
+        send({ type: "summarize", account: currentAccount, scope: _askCtx.scope,
+               id: _askCtx.id, conv: _askCtx.conv, folder: _askCtx.folder, question: q })
     }
     function summarizeEnableCli(cliId) { send({ type: "summarizeEnable", provider: cliId }) }
     function summarizeEnableKey(provider, key) { send({ type: "summarizeEnable", provider: provider, api_key: key || "" }) }
@@ -111,7 +127,12 @@ Singleton {
     // Safety net: if the daemon never replies (hung provider), drop the spinner.
     Timer {
         id: summaryTimeout; interval: 210000; repeat: false
-        onTriggered: { if (backend.summaryLoading) { backend.summaryLoading = false; backend.toast("Summarize timed out") } }
+        onTriggered: {
+            if (backend.summaryLoading || backend.summaryAsking) {
+                backend.summaryLoading = false; backend.summaryAsking = false
+                backend.toast("Summarize timed out")
+            }
+        }
     }
 
     // rich yank: file:// imgs become base64 data URIs so a paste into a
@@ -709,9 +730,25 @@ Singleton {
         } else if (e.type === "summary") {
             summaryLoading = false; summaryTimeout.stop()
             summaryText = e.text || ""; summaryScope = e.scope || ""; summaryIds = e.ids || []
+            summaryQA = []
             summaryReady()
+        } else if (e.type === "summaryAnswer") {
+            summaryAsking = false; summaryTimeout.stop()
+            var qa = summaryQA.slice()
+            if (qa.length && qa[qa.length - 1].a === "")
+                qa[qa.length - 1] = { q: qa[qa.length - 1].q, a: e.text || "" }
+            else
+                qa = qa.concat([{ q: e.question || "", a: e.text || "" }])
+            summaryQA = qa
         } else if (e.type === "summaryError") {
-            summaryLoading = false; summaryTimeout.stop()
+            summaryTimeout.stop()
+            if (summaryAsking) {
+                summaryAsking = false
+                var q2 = summaryQA.slice()
+                if (q2.length && q2[q2.length - 1].a === "") q2.pop()
+                summaryQA = q2
+            }
+            summaryLoading = false
             if (e.text) toast(e.text)
         } else if (e.type === "summarizeSetup") {
             summaryLoading = false; summaryTimeout.stop()

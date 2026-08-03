@@ -91,9 +91,34 @@ Modal {
         else if (bot + pad > flick.contentY + flick.height) flick.contentY = Math.min(maxY, bot + pad - flick.height)
     }
 
+    // parse an answer's markdown into render rows (bullet vs paragraph), same
+    // vocabulary as the summary body.
+    function _ansLines(md) {
+        const out = []
+        const lines = ("" + (md || "")).split("\n")
+        for (let i = 0; i < lines.length; i++) {
+            const ln = lines[i].trim()
+            if (!ln) continue
+            const b = ln.match(/^[-*]\s+(.*)$/)
+            if (b) { out.push({ bullet: true, html: sm._inline(b[1]) }); continue }
+            const h = ln.match(/^#{1,6}\s+(.*)$/)
+            out.push({ bullet: false, html: h ? ("<b>" + sm._inline(h[1]) + "</b>") : sm._inline(ln) })
+        }
+        return out
+    }
+    function _scrollBottom() {
+        if (!open) return
+        const bodyCol = bodyRoot.parent
+        const flick = bodyCol ? bodyCol.parent : null
+        if (!flick || flick.contentHeight === undefined) return
+        flick.contentY = Math.max(0, flick.contentHeight - flick.height)
+    }
+
     readonly property bool canMarkRead: sm.scope === "inbox" && sm.ids.length > 0
 
     onKeyPressed: e => {
+        if (askInput.activeFocus) return
+        if (e.key === Qt.Key_I) { askInput.forceActiveFocus(); e.accepted = true; return }
         if (e.key === Qt.Key_J || e.key === Qt.Key_Down) { sm.sel = Math.min(sm.sel + 1, sm.cats.length - 1); e.accepted = true }
         else if (e.key === Qt.Key_K || e.key === Qt.Key_Up) { sm.sel = Math.max(sm.sel - 1, 0); e.accepted = true }
         else if (e.key === Qt.Key_A && sm.canMarkRead) {
@@ -145,6 +170,9 @@ Modal {
         Item { width: 9; height: 1; visible: sm.canMarkRead }
         KeyCap { visible: sm.canMarkRead; anchors.verticalCenter: parent.verticalCenter; small: true; text: "a" }
         CapLabel { visible: sm.canMarkRead; anchors.verticalCenter: parent.verticalCenter; text: "mark read" }
+        Item { width: 9; height: 1 }
+        KeyCap { anchors.verticalCenter: parent.verticalCenter; small: true; text: "i" }
+        CapLabel { anchors.verticalCenter: parent.verticalCenter; text: "ask" }
         Item { width: 9; height: 1 }
         KeyCap { anchors.verticalCenter: parent.verticalCenter; small: true; text: "esc" }
         CapLabel { anchors.verticalCenter: parent.verticalCenter; text: "close" }
@@ -257,5 +285,90 @@ Modal {
                 }
             }
         }
+        // ── follow-up Q&A (appended below the summary, newtab-daily styling) ──
+        Repeater {
+            model: Backend.summaryQA
+            delegate: Column {
+                required property var modelData
+                width: parent.width
+                topPadding: 10; spacing: 6
+                Rectangle { width: parent.width; height: 1; color: Theme.hairline }
+                Row {
+                    width: parent.width; spacing: 8; topPadding: 6
+                    Text { text: "❯"; color: Theme.sky; font.family: Theme.fontFamily; font.pixelSize: 14; font.weight: 700 }
+                    Text {
+                        width: parent.width - 20
+                        text: modelData.q; color: Theme.fg; wrapMode: Text.Wrap
+                        font.family: Theme.fontFamily; font.pixelSize: 14; font.weight: 600
+                    }
+                }
+                Loader {
+                    active: ("" + (modelData.a || "")) !== ""
+                    width: parent.width
+                    sourceComponent: Column {
+                        width: parent.width; spacing: 4; leftPadding: 4
+                        Repeater {
+                            model: sm._ansLines(modelData.a)
+                            delegate: Row {
+                                required property var modelData
+                                width: parent.width - 4; spacing: 8
+                                Text { visible: modelData.bullet; text: "▪"; color: Theme.orange; topPadding: 3
+                                       font.family: Theme.fontFamily; font.pixelSize: 10 }
+                                Text {
+                                    width: modelData.bullet ? (parent.width - 18) : parent.width
+                                    text: modelData.html; textFormat: Text.RichText; color: Theme.fg_secondary; wrapMode: Text.Wrap
+                                    onLinkActivated: (url) => Qt.openUrlExternally(url)
+                                    font.family: Theme.fontFamily; font.pixelSize: 14; lineHeight: 1.45
+                                }
+                            }
+                        }
+                    }
+                }
+                Text {
+                    visible: ("" + (modelData.a || "")) === ""
+                    leftPadding: 4; text: "thinking…"; color: Theme.fg_muted
+                    font.family: Theme.fontFamily; font.pixelSize: 13
+                    SequentialAnimation on opacity {
+                        running: ("" + (modelData.a || "")) === ""; loops: Animation.Infinite
+                        NumberAnimation { from: 1; to: 0.4; duration: 550 }
+                        NumberAnimation { from: 0.4; to: 1; duration: 550 }
+                    }
+                }
+            }
+        }
+        // ask input — press `i` to focus, ↵ to send, esc to blur
+        Item { width: parent.width; height: 6 }
+        Rectangle {
+            width: parent.width; height: 40; radius: Theme.radiusSm
+            color: Theme.surface
+            border.width: askInput.activeFocus ? 1.5 : 1
+            border.color: askInput.activeFocus ? Theme.fg_muted : Theme.hairline
+            Icon {
+                name: "sparkle-3"; width: 13; height: 13
+                anchors.left: parent.left; anchors.leftMargin: 12; anchors.verticalCenter: parent.verticalCenter
+                color: Theme.fg_muted
+            }
+            TextInput {
+                id: askInput
+                anchors.fill: parent; anchors.leftMargin: 34; anchors.rightMargin: 12
+                verticalAlignment: TextInput.AlignVCenter
+                color: Theme.fg; clip: true; selectByMouse: true
+                enabled: !Backend.summaryAsking
+                font.family: Theme.fontFamily; font.pixelSize: 14
+                onAccepted: { Backend.summarizeAsk(text); text = "" }
+                Keys.onEscapePressed: askInput.focus = false
+                Text {
+                    visible: !askInput.text; anchors.verticalCenter: parent.verticalCenter
+                    text: Backend.summaryAsking ? "thinking…" : "Ask about this…  (i)"
+                    color: Theme.fg_muted; font: askInput.font
+                }
+            }
+        }
+    }
+
+    // scroll to the newest exchange as Q&A grows
+    Connections {
+        target: Backend
+        function onSummaryQAChanged() { Qt.callLater(sm._scrollBottom) }
     }
 }

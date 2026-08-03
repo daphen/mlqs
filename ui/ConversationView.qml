@@ -1819,8 +1819,8 @@ Rectangle {
                     Keys.onPressed: e => {
                         if (e.key === Qt.Key_Escape) { cv.exitInsert(); e.accepted = true; return }
                         if (e.key === Qt.Key_Return || e.key === Qt.Key_Enter) {
-                            if (e.modifiers & Qt.ShiftModifier) { e.accepted = false; return }
-                            cv.sendReply(); e.accepted = true
+                            if (e.modifiers & Qt.ControlModifier) { cv.sendReply(); e.accepted = true; return }
+                            e.accepted = false
                         }
                     }
                 }

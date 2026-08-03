@@ -371,7 +371,7 @@ Modal {
                     visible: !askInput.text; anchors.verticalCenter: parent.verticalCenter
                     text: Backend.summaryLoading ? "Summarizing…"
                         : Backend.summaryAsking ? "thinking…"
-                        : sm.text === "" ? "Frame it, or ↵ for a full recap…"
+                        : sm.text === "" ? "Ask, or ↵ for a full recap"
                         : "Ask a follow-up…  (i)"
                     color: Theme.fg_muted; font: askInput.font
                 }

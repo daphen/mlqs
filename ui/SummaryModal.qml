@@ -193,6 +193,17 @@ Modal {
         width: parent.width
         topPadding: 8
         spacing: 6
+        // working indicator while the initial summary generates (body is empty)
+        Row {
+            visible: Backend.summaryLoading
+            spacing: 10; topPadding: 4; leftPadding: 2
+            Spinner { anchors.verticalCenter: parent.verticalCenter; running: Backend.summaryLoading; color: Theme.fg_muted }
+            Text {
+                anchors.verticalCenter: parent.verticalCenter
+                text: sm.framing !== "" ? "Working on it…" : "Summarizing…"; color: Theme.fg_muted
+                font.family: Theme.fontFamily; font.pixelSize: 14
+            }
+        }
         Repeater {
             id: catRepeater
             model: sm.cats
@@ -334,15 +345,12 @@ Modal {
                         }
                     }
                 }
-                Text {
+                Row {
                     visible: ("" + (modelData.a || "")) === ""
-                    leftPadding: 4; text: "thinking…"; color: Theme.fg_muted
-                    font.family: Theme.fontFamily; font.pixelSize: 13
-                    SequentialAnimation on opacity {
-                        running: ("" + (modelData.a || "")) === ""; loops: Animation.Infinite
-                        NumberAnimation { from: 1; to: 0.4; duration: 550 }
-                        NumberAnimation { from: 0.4; to: 1; duration: 550 }
-                    }
+                    leftPadding: 4; spacing: 8
+                    Spinner { anchors.verticalCenter: parent.verticalCenter; running: ("" + (modelData.a || "")) === ""; color: Theme.fg_muted }
+                    Text { anchors.verticalCenter: parent.verticalCenter; text: "thinking…"; color: Theme.fg_muted
+                           font.family: Theme.fontFamily; font.pixelSize: 13 }
                 }
             }
         }
@@ -354,9 +362,15 @@ Modal {
             border.width: askInput.activeFocus ? 1.5 : 1
             border.color: askInput.activeFocus ? Theme.fg_muted : Theme.hairline
             Icon {
+                visible: !Backend.summaryLoading && !Backend.summaryAsking
                 name: "sparkle-3"; width: 13; height: 13
                 anchors.left: parent.left; anchors.leftMargin: 12; anchors.verticalCenter: parent.verticalCenter
                 color: Theme.fg_muted
+            }
+            Spinner {
+                visible: Backend.summaryLoading || Backend.summaryAsking
+                running: Backend.summaryLoading || Backend.summaryAsking; color: Theme.fg_muted
+                anchors.left: parent.left; anchors.leftMargin: 12; anchors.verticalCenter: parent.verticalCenter
             }
             TextInput {
                 id: askInput

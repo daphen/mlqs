@@ -1,4 +1,5 @@
 import QtQuick
+import QtQuick.Effects
 import "."
 import QsLib
 
@@ -366,13 +367,45 @@ Modal {
                 font.family: Theme.fontFamily; font.pixelSize: 14
                 onAccepted: { if (sm.text === "") { sm.framing = text; Backend.summarizeRun(text) } else Backend.summarizeAsk(text); text = "" }
                 Keys.onEscapePressed: askInput.focus = false
-                Text {
-                    visible: !askInput.text; anchors.verticalCenter: parent.verticalCenter
-                    text: Backend.summaryLoading ? ((sm.framing !== "" ? "Working on it" : "Summarizing") + sm._dots)
-                        : Backend.summaryAsking ? ("thinking" + sm._dots)
+                // Placeholder with a blur-swap when the state text changes
+                // (Ask ↔ Working on it ↔ thinking). The animated ellipsis is
+                // appended to the source but does NOT re-trigger the swap.
+                Item {
+                    id: ph
+                    visible: !askInput.text
+                    anchors.left: parent.left; anchors.right: parent.right
+                    anchors.verticalCenter: parent.verticalCenter
+                    height: phSrc.implicitHeight
+                    readonly property string base: Backend.summaryLoading ? (sm.framing !== "" ? "Working on it" : "Summarizing")
+                        : Backend.summaryAsking ? "thinking"
                         : sm.text === "" ? "Ask, or ↵ for a full recap"
                         : "Ask a follow-up…  (i)"
-                    color: Theme.fg_muted; font: askInput.font
+                    property string shownBase: base
+                    onBaseChanged: phAnim.restart()
+                    Text {
+                        id: phSrc
+                        visible: false
+                        text: ph.shownBase + ((Backend.summaryLoading || Backend.summaryAsking) ? sm._dots : "")
+                        color: Theme.fg_muted; font: askInput.font
+                    }
+                    MultiEffect {
+                        id: phFx
+                        anchors.left: parent.left; anchors.verticalCenter: parent.verticalCenter
+                        width: phSrc.implicitWidth; height: phSrc.implicitHeight
+                        source: phSrc; blurEnabled: true; blur: 0; blurMax: 24
+                    }
+                    SequentialAnimation {
+                        id: phAnim
+                        ParallelAnimation {
+                            NumberAnimation { target: phFx; property: "blur"; to: 1; duration: 110; easing.type: Easing.OutQuad }
+                            NumberAnimation { target: phFx; property: "opacity"; to: 0.1; duration: 110 }
+                        }
+                        ScriptAction { script: ph.shownBase = ph.base }
+                        ParallelAnimation {
+                            NumberAnimation { target: phFx; property: "blur"; to: 0; duration: 190; easing.type: Easing.OutQuad }
+                            NumberAnimation { target: phFx; property: "opacity"; to: 1; duration: 190 }
+                        }
+                    }
                 }
             }
         }

@@ -16,6 +16,9 @@ Modal {
     property var ids: []
     property string framing: ""
     property int sel: 0
+    // animated ellipsis for the working text ("Working on it" + . / .. / ...)
+    property int _dotN: 0
+    readonly property string _dots: ".".repeat(_dotN)
     panelWidth: Math.round(Math.min(860, sm.width - 64))
     maxHeightFrac: 0.72
     panelColor: Theme.bg
@@ -193,16 +196,13 @@ Modal {
         width: parent.width
         topPadding: 8
         spacing: 6
-        // working indicator while the initial summary generates (body is empty)
-        Row {
+        // working text while the initial summary generates (body is empty); the
+        // spinner is in the input, so this just animates a three-dot ellipsis.
+        Text {
             visible: Backend.summaryLoading
-            spacing: 10; topPadding: 4; leftPadding: 2
-            Spinner { anchors.verticalCenter: parent.verticalCenter; running: Backend.summaryLoading; color: Theme.fg_muted }
-            Text {
-                anchors.verticalCenter: parent.verticalCenter
-                text: sm.framing !== "" ? "Working on it…" : "Summarizing…"; color: Theme.fg_muted
-                font.family: Theme.fontFamily; font.pixelSize: 14
-            }
+            topPadding: 4; leftPadding: 2
+            text: (sm.framing !== "" ? "Working on it" : "Summarizing") + sm._dots
+            color: Theme.fg_muted; font.family: Theme.fontFamily; font.pixelSize: 14
         }
         Repeater {
             id: catRepeater
@@ -345,12 +345,10 @@ Modal {
                         }
                     }
                 }
-                Row {
+                Text {
                     visible: ("" + (modelData.a || "")) === ""
-                    leftPadding: 4; spacing: 8
-                    Spinner { anchors.verticalCenter: parent.verticalCenter; running: ("" + (modelData.a || "")) === ""; color: Theme.fg_muted }
-                    Text { anchors.verticalCenter: parent.verticalCenter; text: "thinking…"; color: Theme.fg_muted
-                           font.family: Theme.fontFamily; font.pixelSize: 13 }
+                    leftPadding: 4; text: "thinking" + sm._dots; color: Theme.fg_muted
+                    font.family: Theme.fontFamily; font.pixelSize: 13
                 }
             }
         }
@@ -383,14 +381,21 @@ Modal {
                 Keys.onEscapePressed: askInput.focus = false
                 Text {
                     visible: !askInput.text; anchors.verticalCenter: parent.verticalCenter
-                    text: Backend.summaryLoading ? "Summarizing…"
-                        : Backend.summaryAsking ? "thinking…"
+                    text: (Backend.summaryLoading || Backend.summaryAsking) ? ""
                         : sm.text === "" ? "Ask, or ↵ for a full recap"
                         : "Ask a follow-up…  (i)"
                     color: Theme.fg_muted; font: askInput.font
                 }
             }
         }
+    }
+
+    // drives the "…" ellipsis while working (the single spinner lives in the input)
+    Timer {
+        running: sm.open && (Backend.summaryLoading || Backend.summaryAsking)
+        interval: 400; repeat: true
+        onTriggered: sm._dotN = (sm._dotN + 1) % 4
+        onRunningChanged: if (!running) sm._dotN = 0
     }
 
     // scroll to the newest exchange as Q&A grows

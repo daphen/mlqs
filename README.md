@@ -220,6 +220,38 @@ Setup on top of the mail scopes:
 2. Re-run consent for every account so the token gains the calendar
    scope: `mlqs auth <name>`.
 
+## Summaries (AI)
+
+Summarize what's waiting — or ask questions about it — without leaving the
+keyboard. Press **`s`** and the modal opens on a prompt: hit `↵` for a full
+recap, or type a framing (e.g. `action points for the release`) to shape it.
+Ask follow-ups in the same input; answers stack below.
+
+Scopes are context-sensitive:
+
+| where | key | summarizes |
+|---|---|---|
+| in a conversation | `s` | the whole thread |
+| in a conversation | `⇧s` | just the focused message |
+| in the index | `s` | the unread mail in the focused folder |
+| index visual mode | `v` then `s` | just the selected conversations |
+
+In the modal: `i` focuses the ask input · `y`/`⇧y` yank a section / all ·
+`a` marks the summarized unread as read (inbox / selection) · `esc` closes.
+There's also a sparkle button next to compose.
+
+**Provider** — set once, the first time you summarize (a one-click guide
+appears):
+
+- **Keyless** — reuse a logged-in agent CLI on this machine (`claude`, `codex`);
+  runs on your existing plan, no key.
+- **API key** — Anthropic, or any OpenAI-compatible endpoint; a small fast model
+  (Haiku / gpt-4o-mini) by default.
+
+It's stored in the `summarize` block of `~/.config/mlqs/accounts.json`
+(`{provider, model}` for a CLI, or `{base_url, model, api_key}` for HTTP);
+nothing runs until it's set. Bodies are read live for the summary, never cached.
+
 ## Configure
 
 `~/.config/mlqs/accounts.json`:
@@ -270,6 +302,7 @@ QML2_IMPORT_PATH=$PWD/ui/vendor quickshell -p ui/shell.qml   # UI
 | `f` | link/image/attachment hints · `o` original HTML in browser |
 | `e` `dd` `u` | archive · trash · undo |
 | `Shift+R` `x` | toggle read · star |
+| `s` / `⇧s` | summarize (thread or inbox — `↵` recap or type a framing) / focused message · `v` then `s` = selection · in the modal `i` asks, `a` marks read |
 | `/` | search (Gmail syntax) · `Ctrl+S`/`Ctrl+Shift+L/H` switch account |
 | `gg G Ctrl+D/U` | jump/scroll · `8j` counts work |
 

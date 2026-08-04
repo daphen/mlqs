@@ -16,10 +16,12 @@ Rectangle {
         return Backend.messages.length > 0 ? Backend.messages[Backend.messages.length - 1] : null
     }
 
-    // the focused message when it carries an invite, else null
+    // the focused message when it carries an invite, else null. Uses the same
+    // focus resolution as focusedMsg (falls back to the newest message when
+    // nothing is explicitly focused), so `y` accepts an invite in a
+    // single-message email instead of dropping into yank mode.
     function inviteMsg() {
-        const i = list.currentIndex
-        const m = (i >= 0 && i < Backend.messages.length) ? Backend.messages[i] : null
+        const m = focusedMsg()
         return (m && m.hasInvite) ? m : null
     }
 

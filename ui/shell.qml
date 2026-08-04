@@ -38,6 +38,11 @@ FloatingWindow {
                                        || composer.visible || eventComposer.visible || index.searchFocus
     property string pane: "index"   // "sidebar" | "index"
     readonly property bool calPane: Backend.currentFolderId === "__calendar"
+    // A capturing mode owns the keyboard: while one is active, global letter
+    // keybinds (s = summarize, …) must NOT fire — the mode's own handler claims
+    // the letter (a hint/yank label, a cursor motion, a visual selection). This
+    // is the single guard against a keybind leaking into a mode.
+    readonly property bool capturing: conv.hinting || conv.yanking || conv.cursorMode || index.visualMode
     property bool gPending: false
     property bool dPending: false
     // vim count prefix: digits accumulate, j/k consume ("8j")
@@ -498,12 +503,12 @@ FloatingWindow {
             // AI summary (sparkle): S = the focused message; s = this thread (in a
             // conversation) / the focused inbox (in the index). Gated off the g-goto
             // prefix (gs/gS) and the calendar pane.
-            if (!ctrl && !win.gPending && (e.modifiers & Qt.ShiftModifier) && e.key === Qt.Key_S && inConv) {
+            if (!ctrl && !win.gPending && !win.capturing && (e.modifiers & Qt.ShiftModifier) && e.key === Qt.Key_S && inConv) {
                 const fm = conv.focusedMsg()
                 if (fm && fm.id) Backend.summarize("message", fm.id, Backend.openConvId)
                 e.accepted = true; return
             }
-            if (!ctrl && !win.gPending && !(e.modifiers & Qt.ShiftModifier) && e.key === Qt.Key_S) {
+            if (!ctrl && !win.gPending && !win.capturing && !(e.modifiers & Qt.ShiftModifier) && e.key === Qt.Key_S) {
                 if (inConv) { Backend.summarize("thread", Backend.openConvId); e.accepted = true; return }
                 if (!win.calPane && win.pane === "index") { Backend.summarize("inbox", ""); e.accepted = true; return }
             }

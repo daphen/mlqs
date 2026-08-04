@@ -471,6 +471,16 @@ FloatingWindow {
                 conv.cancelHints()
             }
 
+            // y-mode: pick a labeled token to copy; y again = whole message.
+            // MUST run before the letter keybinds below (e.g. s = summarize),
+            // else a token labeled 's' fires the summary instead of yanking.
+            if (inConv && conv.yanking) {
+                if (e.key === Qt.Key_Escape || e.key === Qt.Key_Q) { conv.cancelYank(); e.accepted = true; return }
+                if (e.key === Qt.Key_Y) { conv.yankWholeMessage(); e.accepted = true; return }
+                if (e.text && /^[a-z]$/.test(e.text)) { conv.yankKey(e.text); e.accepted = true; return }
+                conv.cancelYank()
+            }
+
             // account switch: Ctrl+Shift+L/H next/prev (before the pane-focus
             // matches below, which would otherwise swallow Ctrl+H/L with shift)
             if (ctrl && (e.modifiers & Qt.ShiftModifier) && (e.key === Qt.Key_L || e.key === Qt.Key_H)) {
@@ -543,14 +553,6 @@ FloatingWindow {
                     e.accepted = true; return
                 }
                 e.accepted = true; return
-            }
-
-            // y-mode: pick a labeled token to copy; y again = whole message
-            if (inConv && conv.yanking) {
-                if (e.key === Qt.Key_Escape || e.key === Qt.Key_Q) { conv.cancelYank(); e.accepted = true; return }
-                if (e.key === Qt.Key_Y) { conv.yankWholeMessage(); e.accepted = true; return }
-                if (e.text && /^[a-z]$/.test(e.text)) { conv.yankKey(e.text); e.accepted = true; return }
-                conv.cancelYank()
             }
 
             // in-message cursor mode owns the keyboard in a conversation:

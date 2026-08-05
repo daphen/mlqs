@@ -14,7 +14,7 @@ Modal {
     panelColor: Theme.bg
     chinBar: true
 
-    readonly property var titleFont: ["Sigurd", "Instrument Serif"]
+    readonly property string titleFont: "Sigurd"
     property var clis: Backend.summarizeClis
     property string vendor: "anthropic"     // key-path vendor selection
 
@@ -54,7 +54,7 @@ Modal {
             id: t
             anchors.left: parent.left; anchors.bottom: parent.bottom; anchors.bottomMargin: -2
             text: "Set up summaries"; color: Theme.fg
-            font.families: gd.titleFont; font.pixelSize: 30; font.weight: 400; font.capitalization: Font.AllUppercase
+            font.family: gd.titleFont; font.pixelSize: 30; font.weight: 400; font.capitalization: Font.AllUppercase
             font.letterSpacing: -0.3
         }
         Text {

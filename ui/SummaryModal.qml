@@ -24,7 +24,7 @@ Modal {
     maxHeightFrac: 0.72
     panelColor: Theme.bg
 
-    readonly property var titleFont: ["Sigurd", "Instrument Serif"]
+    readonly property string titleFont: "Sigurd"
     readonly property string fgHex: "" + Theme.fg
     readonly property var cats: sm._cats(sm.text)
 
@@ -155,7 +155,7 @@ Modal {
             anchors.left: parent.left; anchors.bottom: parent.bottom; anchors.bottomMargin: -2
             text: sm.framing !== "" ? (sm.framing.length > 48 ? sm.framing.slice(0, 48) + "…" : sm.framing) : "Summary"
             color: Theme.fg
-            font.families: sm.titleFont; font.pixelSize: 34; font.weight: 400; font.capitalization: Font.AllUppercase
+            font.family: sm.titleFont; font.pixelSize: 34; font.weight: 400; font.capitalization: Font.AllUppercase
             font.letterSpacing: -0.3
         }
         Text {

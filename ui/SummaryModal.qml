@@ -24,7 +24,8 @@ Modal {
     maxHeightFrac: 0.72
     panelColor: Theme.bg
 
-    readonly property string titleFont: "Sigurd"
+    // Sigurd when installed (David); bundled Instrument Serif otherwise (friends).
+    readonly property string titleFont: Qt.fontFamilies().indexOf("Sigurd") >= 0 ? "Sigurd" : "Instrument Serif"
     readonly property string fgHex: "" + Theme.fg
     readonly property var cats: sm._cats(sm.text)
 

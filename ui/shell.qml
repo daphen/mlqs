@@ -8,6 +8,9 @@ import QsLib
 FloatingWindow {
     id: win
     title: "mlqs"
+    // Bundled OFL serif — the display-title fallback on machines without Sigurd
+    // installed (friends). We ship the file so the family always resolves.
+    FontLoader { source: Qt.resolvedUrl("InstrumentSerif-Regular.ttf") }
     // explicit: a cold-started UI must show without waiting for a summon
     // (the launcher's summonui broadcast fires before we connect)
     visible: true

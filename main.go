@@ -397,6 +397,14 @@ func (d *daemon) serve(conn net.Conn) {
 				}
 				d.notifier.InvokeByID(uint32(id), act)
 			}
+		case "openconv":
+			// Deep-link from outside the client: navigate the UI to a
+			// conversation, exactly as a clicked notification does. Reuses
+			// the same broadcast the notifier callback emits, so there is no
+			// second navigation path to keep in sync. Pairs naturally with
+			// "summonui" when the caller also wants the window raised.
+			d.broadcast(map[string]any{"type": "openconv", "account": cmd.Account,
+				"id": cmd.ID, "subject": cmd.Subject})
 		case "folders", "conversations", "conversation", "openhtml", "openatt", "search", "threads", "contacts", "markread", "star", "archive", "unarchive", "trash", "untrash", "send",
 			"agenda", "rsvp", "rsvpmail", "createevent", "calendars":
 			go d.handle(conn, cmd)

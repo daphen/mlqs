@@ -36,9 +36,10 @@ type Account struct {
 	SMTPSecurity string `json:"smtp_security,omitempty"`
 	Username     string `json:"username,omitempty"`
 	PasswordCmd  string `json:"password_cmd,omitempty"`
-	// IMAPThreading: "references" (default) groups reply chains via the
-	// server's THREAD=REFERENCES; "flat" gives one conversation per message
-	// (avoids RFC-5256 subject-merge collapsing unrelated same-subject mail).
+	// IMAPThreading: "" (default) groups reply chains via the server's
+	// THREAD=REFERENCES, then splits apart RFC-5256's subject-only merges using
+	// explicit Message-ID references; "server" (alias "references") keeps the
+	// server's grouping verbatim; "flat" gives one conversation per message.
 	IMAPThreading string `json:"imap_threading,omitempty"`
 }
 

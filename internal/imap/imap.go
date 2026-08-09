@@ -20,6 +20,7 @@ import (
 	"io"
 	"net/mail"
 	"os"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -72,6 +73,9 @@ type Client struct {
 
 	mmu     sync.Mutex            // guards members
 	members map[string][]imap.UID // convID -> member UIDs, populated on list/get
+
+	tmu   sync.Mutex                         // guards tmeta
+	tmeta map[string]map[imap.UID]threadMeta // folder -> UID -> threading headers (immutable per UID)
 }
 
 func New(cfg Config) *Client {
@@ -87,7 +91,7 @@ func New(cfg Config) *Client {
 	if cfg.SMTPSecurity == "" {
 		cfg.SMTPSecurity = "starttls"
 	}
-	return &Client{cfg: cfg, members: map[string][]imap.UID{}}
+	return &Client{cfg: cfg, members: map[string][]imap.UID{}, tmeta: map[string]map[imap.UID]threadMeta{}}
 }
 
 var _ provider.Provider = (*Client)(nil)
@@ -375,19 +379,283 @@ func flattenThread(td imapclient.ThreadData, into *[]imap.UID) {
 	}
 }
 
+// threadMeta is the minimum needed to undo RFC 5256's final subject-merge step:
+// a message's own id and the ids it explicitly references. Bodies are never fetched.
+type threadMeta struct {
+	messageID string
+	refs      []string // References + In-Reply-To, normalized
+}
+
+var messageIDRE = regexp.MustCompile(`<([^<>\s]+)>`)
+
+func normalizeMessageID(s string) string {
+	return strings.ToLower(strings.Trim(strings.TrimSpace(s), "<>"))
+}
+
+// messageIDs pulls every <addr-spec> out of a header block, deduped in order.
+func messageIDs(s string) []string {
+	var out []string
+	seen := map[string]bool{}
+	for _, m := range messageIDRE.FindAllStringSubmatch(s, -1) {
+		if id := normalizeMessageID(m[1]); id != "" && !seen[id] {
+			seen[id] = true
+			out = append(out, id)
+		}
+	}
+	return out
+}
+
+func parseThreadMeta(b *imapclient.FetchMessageBuffer, section *imap.FetchItemBodySection) threadMeta {
+	var m threadMeta
+	if e := b.Envelope; e != nil {
+		m.messageID = normalizeMessageID(e.MessageID)
+	}
+	raw := b.FindBodySection(section)
+	if len(raw) == 0 {
+		// Servers may echo the section spec differently than we asked for it, and the
+		// match is order-sensitive — take whatever header text came back rather than
+		// losing every reference and un-threading the conversation.
+		for _, v := range b.BodySection {
+			if len(v.Bytes) > 0 {
+				raw = v.Bytes
+				break
+			}
+		}
+	}
+	// We requested only Message-ID/References/In-Reply-To, so every id in the block
+	// is either this message's own or one it references. Scanned with a regex rather
+	// than net/mail, which bails on the first malformed header line — that would
+	// silently drop every reference and split the conversation.
+	for _, id := range messageIDs(string(raw)) {
+		if id != m.messageID {
+			m.refs = append(m.refs, id)
+		}
+	}
+	return m
+}
+
+// fetchThreadMeta returns metadata for uids, fetching only the ones not already
+// cached. These headers never change for a given UID, so a steady-state poll
+// fetches nothing — without the cache this re-read most of the mailbox every 45s.
+func (cl *Client) fetchThreadMeta(c *imapclient.Client, folder string, uids []imap.UID) map[imap.UID]threadMeta {
+	out := make(map[imap.UID]threadMeta, len(uids))
+	var missing []imap.UID
+	cl.tmu.Lock()
+	for _, u := range uids {
+		if m, ok := cl.tmeta[folder][u]; ok {
+			out[u] = m
+		} else {
+			missing = append(missing, u)
+		}
+	}
+	cl.tmu.Unlock()
+	if len(missing) == 0 {
+		return out
+	}
+	var set imap.UIDSet
+	set.AddNum(missing...)
+	section := &imap.FetchItemBodySection{
+		Specifier:    imap.PartSpecifierHeader,
+		HeaderFields: []string{"Message-ID", "References", "In-Reply-To"},
+		Peek:         true,
+	}
+	bufs, err := c.Fetch(set, &imap.FetchOptions{
+		UID:         true,
+		Envelope:    true,
+		BodySection: []*imap.FetchItemBodySection{section},
+	}).Collect()
+	if err != nil {
+		return out // caller keeps the server's grouping
+	}
+	cl.tmu.Lock()
+	if cl.tmeta[folder] == nil {
+		cl.tmeta[folder] = map[imap.UID]threadMeta{}
+	}
+	for _, b := range bufs {
+		m := parseThreadMeta(b, section)
+		cl.tmeta[folder][b.UID] = m
+		out[b.UID] = m
+	}
+	cl.tmu.Unlock()
+	return out
+}
+
+// forgetMeta drops a folder's cached header metadata — the UIDs it is keyed by no
+// longer identify the same messages once UIDVALIDITY changes.
+func (cl *Client) forgetMeta(folder string) {
+	cl.tmu.Lock()
+	delete(cl.tmeta, folder)
+	cl.tmu.Unlock()
+}
+
+type unionFind struct{ parent []int }
+
+func newUnionFind(n int) *unionFind {
+	p := make([]int, n)
+	for i := range p {
+		p[i] = i
+	}
+	return &unionFind{parent: p}
+}
+
+func (u *unionFind) find(x int) int {
+	for u.parent[x] != x {
+		u.parent[x] = u.parent[u.parent[x]] // path halving
+		x = u.parent[x]
+	}
+	return x
+}
+
+func (u *unionFind) union(a, b int) {
+	if a, b = u.find(a), u.find(b); a != b {
+		u.parent[b] = a
+	}
+}
+
+// splitByReferences rebuilds conversations from explicit Message-ID relationships,
+// dropping the subject-only merge RFC 5256 mandates as its final step — that step
+// collapses unrelated mail which merely shares a subject ("Re: lunch") into one
+// conversation. Threads are only ever split, never merged across what the server
+// returned, so the result is always a refinement of the server's grouping.
+func splitByReferences(coarse []thread, meta map[imap.UID]threadMeta) []thread {
+	var out []thread
+	for _, t := range coarse {
+		if len(t.uids) < 2 {
+			out = append(out, t)
+			continue
+		}
+		known := false
+		for _, u := range t.uids {
+			if _, ok := meta[u]; ok {
+				known = true
+				break
+			}
+		}
+		if !known {
+			// No metadata at all (fetch failed, or the server omitted these UIDs) —
+			// keep the server's grouping rather than exploding it into singletons.
+			out = append(out, t)
+			continue
+		}
+		uf := newUnionFind(len(t.uids))
+		byID := map[string]int{}
+		for i, u := range t.uids {
+			if id := meta[u].messageID; id != "" {
+				// Two deliveries of the same message (a Bcc'd copy, a list echo) share
+				// an id — union them rather than letting the last one win, which would
+				// split a thread the server had grouped correctly.
+				if j, ok := byID[id]; ok {
+					uf.union(i, j)
+				} else {
+					byID[id] = i
+				}
+			}
+		}
+		// refOwner links siblings that reference the same ABSENT parent — a reply
+		// chain whose root isn't in this folder is still one conversation.
+		refOwner := map[string]int{}
+		for i, u := range t.uids {
+			for _, ref := range meta[u].refs {
+				if j, ok := byID[ref]; ok {
+					uf.union(i, j)
+				}
+				if j, ok := refOwner[ref]; ok {
+					uf.union(i, j)
+				} else {
+					refOwner[ref] = i
+				}
+			}
+		}
+		groups := map[int][]imap.UID{}
+		var order []int
+		for i, u := range t.uids {
+			r := uf.find(i)
+			if _, seen := groups[r]; !seen {
+				order = append(order, r)
+			}
+			groups[r] = append(groups[r], u)
+		}
+		for _, r := range order {
+			out = append(out, mkThread(groups[r]))
+		}
+	}
+	return out
+}
+
+// filterThreads keeps conversations with at least one selected member, retaining
+// every member (including already-read ancestors) so the root — and therefore the
+// convID — is identical to the one the all-mail view produces.
+func filterThreads(ths []thread, selected map[imap.UID]bool) []thread {
+	out := make([]thread, 0, len(ths))
+	for _, t := range ths {
+		for _, u := range t.uids {
+			if selected[u] {
+				out = append(out, t)
+				break
+			}
+		}
+	}
+	return out
+}
+
+// splitCoarse splits the multi-message threads apart on explicit references. On any
+// metadata failure it returns the server's grouping unchanged — coarser threading
+// beats a broken conversation list.
+func (cl *Client) splitCoarse(c *imapclient.Client, coarse []thread) []thread {
+	var need []imap.UID
+	for _, t := range coarse {
+		if len(t.uids) > 1 {
+			need = append(need, t.uids...)
+		}
+	}
+	if len(need) == 0 {
+		return coarse
+	}
+	folder := ""
+	if mb := c.Mailbox(); mb != nil {
+		folder = mb.Name
+	}
+	meta := cl.fetchThreadMeta(c, folder, need)
+	if len(meta) == 0 {
+		return coarse
+	}
+	return splitByReferences(coarse, meta)
+}
+
 // threads returns the folder's conversations newest-first (by highest member
 // UID, a cheap proxy for most-recent arrival). When the server lacks THREAD,
 // every message becomes its own conversation.
+//
+// cfg.Threading selects how conversations are formed:
+//
+//	""                    default — server THREAD, then split apart RFC 5256's
+//	                      subject-only merges using explicit Message-ID references
+//	"server"/"references" the server's THREAD verbatim (RFC 5256, subject merge and all)
+//	"flat"                one conversation per message
 func (cl *Client) threads(c *imapclient.Client, unreadOnly bool) ([]thread, error) {
-	crit := &imap.SearchCriteria{}
+	// Thread the WHOLE folder, then filter to the conversations containing an unread
+	// message. Threading only UNSEEN messages changes each thread's root — and so its
+	// convID — and caches a partial member list, which listed conversations twice and
+	// poisoned the members cache.
+	var unseen map[imap.UID]bool
 	if unreadOnly {
-		crit.NotFlag = []imap.Flag{imap.FlagSeen}
+		data, err := c.UIDSearch(&imap.SearchCriteria{NotFlag: []imap.Flag{imap.FlagSeen}}, nil).Wait()
+		if err != nil {
+			return nil, err
+		}
+		unseen = make(map[imap.UID]bool)
+		for _, u := range data.AllUIDs() {
+			unseen[u] = true
+		}
+		if len(unseen) == 0 {
+			return nil, nil // nothing unread — no need to thread the folder at all
+		}
 	}
 	var out []thread
 	if cl.cfg.Threading != "flat" && cl.hasThread(c) {
 		tds, err := c.UIDThread(&imapclient.ThreadOptions{
 			Algorithm:      imap.ThreadReferences,
-			SearchCriteria: crit,
+			SearchCriteria: &imap.SearchCriteria{},
 		}).Wait()
 		if err != nil {
 			return nil, err
@@ -395,12 +663,21 @@ func (cl *Client) threads(c *imapclient.Client, unreadOnly bool) ([]thread, erro
 		for _, td := range tds {
 			var uids []imap.UID
 			flattenThread(td, &uids)
-			if len(uids) == 0 {
-				continue
+			if len(uids) > 0 {
+				out = append(out, mkThread(uids))
 			}
-			out = append(out, mkThread(uids))
+		}
+		if cl.cfg.Threading != "server" && cl.cfg.Threading != "references" {
+			out = cl.splitCoarse(c, out)
 		}
 	} else {
+		// Flat: every message is its own conversation, so there is no threading to
+		// preserve — let the server do the unread filtering instead of listing the
+		// whole folder and discarding most of it.
+		crit := &imap.SearchCriteria{}
+		if unreadOnly {
+			crit.NotFlag = []imap.Flag{imap.FlagSeen}
+		}
 		data, err := c.UIDSearch(crit, nil).Wait()
 		if err != nil {
 			return nil, err
@@ -408,6 +685,9 @@ func (cl *Client) threads(c *imapclient.Client, unreadOnly bool) ([]thread, erro
 		for _, u := range data.AllUIDs() {
 			out = append(out, thread{root: u, uids: []imap.UID{u}, maxUID: u})
 		}
+	}
+	if unreadOnly {
+		out = filterThreads(out, unseen)
 	}
 	sort.SliceStable(out, func(i, j int) bool { return out[i].maxUID > out[j].maxUID })
 	return out, nil
@@ -946,6 +1226,9 @@ func (cl *Client) Delta(ctx context.Context, sinceToken string) (provider.Delta,
 				continue // new folder since last poll; baseline it silently
 			}
 			if old.UIDValidity != cur.UIDValidity {
+				// The mailbox was renumbered: cached threading headers are keyed by
+				// UID, which now identifies a different message.
+				cl.forgetMeta(d.Mailbox)
 				resync = true
 				continue
 			}

@@ -187,9 +187,10 @@ Account entry (`~/.config/mlqs/accounts.json`):
 - `imap_security` / `smtp_security`: `ssl` (implicit TLS), `starttls`, or
   `plain`. Ports default to 993 (imap) / 587 (smtp); `username` defaults
   to `email`.
-- `imap_threading`: `references` (default) groups reply chains via the
-  server's THREAD; `flat` gives one conversation per message — set it to
-  `flat` if the subject-merge below bothers you.
+- `imap_threading`: unset (default) groups reply chains via the server's
+  THREAD and then splits apart its subject-only merges (see below);
+  `server` (alias `references`) keeps the server's grouping verbatim;
+  `flat` gives one conversation per message.
 - Store the password: `mlqs auth personal` prompts for it (no echo) and
   writes `~/.local/share/mlqs/tokens/personal.imap` (0600). Alternatives:
   a `"password_cmd": "pass show mail/personal"` field, or the
@@ -200,10 +201,18 @@ trash → `\Trash`, star → the `\Flagged` keyword, read → `\Seen`. Sends
 are `APPEND`ed to the `\Sent` folder. Reply threading is set via
 `In-Reply-To`/`References`.
 
-Known trade-off: `THREAD=REFERENCES` is RFC-5256, which merges by subject
-when messages carry no `References` — so a run of identically-subjected
-bulk mail (receipts, notifications) collapses into one conversation. Set
-`"imap_threading": "flat"` to opt out and get one conversation per message.
+`THREAD=REFERENCES` is RFC-5256, whose final step merges by subject when
+messages carry no `References` — so a run of identically-subjected bulk mail
+(receipts, notifications) collapses into one conversation. By default the
+daemon undoes that step: it fetches `Message-ID`/`References`/`In-Reply-To`
+for the multi-message threads and regroups them on those explicit links only,
+so same-subject mail with nothing in common is separated again. Threads are
+only ever split, never merged beyond what the server returned, and the headers
+are cached per UID so a steady-state poll fetches nothing.
+
+Messages with no reference headers at all are left as their own conversation
+rather than guessed at by subject. Set `"imap_threading": "server"` to keep
+the server's raw grouping, or `"flat"` for one conversation per message.
 
 ## Calendar
 

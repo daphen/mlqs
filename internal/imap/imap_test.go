@@ -4,6 +4,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/emersion/go-imap/v2"
+
 	"mlqs/internal/provider"
 )
 
@@ -87,4 +89,143 @@ func contains(ss []string, want string) bool {
 		}
 	}
 	return false
+}
+
+// ---- conversation threading ----
+
+// tm builds threadMeta the way parseThreadMeta would: own id, then referenced ids.
+func tm(id string, refs ...string) threadMeta {
+	m := threadMeta{messageID: id}
+	for _, r := range refs {
+		m.refs = append(m.refs, r)
+	}
+	return m
+}
+
+func groupsOf(ths []thread) [][]imap.UID {
+	out := make([][]imap.UID, 0, len(ths))
+	for _, t := range ths {
+		out = append(out, t.uids)
+	}
+	return out
+}
+
+func sameGroups(got [][]imap.UID, want [][]imap.UID) bool {
+	if len(got) != len(want) {
+		return false
+	}
+	for i := range got {
+		if len(got[i]) != len(want[i]) {
+			return false
+		}
+		for j := range got[i] {
+			if got[i][j] != want[i][j] {
+				return false
+			}
+		}
+	}
+	return true
+}
+
+// RFC 5256's last step merges by subject, so unrelated mail sharing a subject
+// arrives as one server thread. With no references between them, each message is
+// its own conversation.
+func TestSplitByReferencesSeparatesUnrelatedSameSubject(t *testing.T) {
+	coarse := []thread{mkThread([]imap.UID{1, 2, 3})}
+	meta := map[imap.UID]threadMeta{1: tm("a@x"), 2: tm("b@x"), 3: tm("c@x")}
+	got := groupsOf(splitByReferences(coarse, meta))
+	if want := [][]imap.UID{{1}, {2}, {3}}; !sameGroups(got, want) {
+		t.Fatalf("got %v, want %v", got, want)
+	}
+}
+
+// A real reply chain must survive the split, while an unrelated same-subject
+// message in the same server thread is separated out.
+func TestSplitByReferencesKeepsExplicitChain(t *testing.T) {
+	coarse := []thread{mkThread([]imap.UID{10, 11, 12})}
+	meta := map[imap.UID]threadMeta{
+		10: tm("root@x"),
+		11: tm("reply@x", "root@x"),
+		12: tm("other@x"),
+	}
+	got := groupsOf(splitByReferences(coarse, meta))
+	if want := [][]imap.UID{{10, 11}, {12}}; !sameGroups(got, want) {
+		t.Fatalf("got %v, want %v", got, want)
+	}
+}
+
+// Two deliveries of the same message (a Bcc'd copy, a list echo) share a
+// Message-ID. They must union, not let the last writer win — that split a thread
+// the server had grouped correctly and showed a phantom duplicate row.
+func TestSplitByReferencesUnionsDuplicateMessageID(t *testing.T) {
+	coarse := []thread{mkThread([]imap.UID{5, 9, 12})}
+	meta := map[imap.UID]threadMeta{
+		5:  tm("m@x"),
+		9:  tm("m@x"),
+		12: tm("child@x", "m@x"),
+	}
+	got := groupsOf(splitByReferences(coarse, meta))
+	if want := [][]imap.UID{{5, 9, 12}}; !sameGroups(got, want) {
+		t.Fatalf("got %v, want %v", got, want)
+	}
+}
+
+// Siblings replying to a parent that isn't in this folder still belong together.
+func TestSplitByReferencesGroupsSiblingsOfAbsentParent(t *testing.T) {
+	coarse := []thread{mkThread([]imap.UID{4, 7})}
+	meta := map[imap.UID]threadMeta{
+		4: tm("one@x", "gone@x"),
+		7: tm("two@x", "gone@x"),
+	}
+	got := groupsOf(splitByReferences(coarse, meta))
+	if want := [][]imap.UID{{4, 7}}; !sameGroups(got, want) {
+		t.Fatalf("got %v, want %v", got, want)
+	}
+}
+
+// A metadata fetch that returned nothing for a thread must leave the server's
+// grouping alone rather than exploding it into singletons.
+func TestSplitByReferencesKeepsThreadWhenMetaMissing(t *testing.T) {
+	coarse := []thread{mkThread([]imap.UID{1, 2, 3})}
+	got := groupsOf(splitByReferences(coarse, map[imap.UID]threadMeta{}))
+	if want := [][]imap.UID{{1, 2, 3}}; !sameGroups(got, want) {
+		t.Fatalf("got %v, want %v", got, want)
+	}
+}
+
+// Splitting never merges across server threads: the result is always a
+// refinement of what the server returned.
+func TestSplitByReferencesNeverMergesAcrossThreads(t *testing.T) {
+	coarse := []thread{mkThread([]imap.UID{1}), mkThread([]imap.UID{2})}
+	meta := map[imap.UID]threadMeta{1: tm("a@x", "shared@x"), 2: tm("b@x", "shared@x")}
+	got := groupsOf(splitByReferences(coarse, meta))
+	if want := [][]imap.UID{{1}, {2}}; !sameGroups(got, want) {
+		t.Fatalf("got %v, want %v", got, want)
+	}
+}
+
+// The unread view keeps whole conversations — including already-read ancestors —
+// so a thread's root, and therefore its convID, matches the all-mail view.
+func TestFilterThreadsKeepsRootAndAllMembers(t *testing.T) {
+	ths := []thread{mkThread([]imap.UID{5, 9, 13}), mkThread([]imap.UID{2})}
+	got := filterThreads(ths, map[imap.UID]bool{13: true})
+	if len(got) != 1 {
+		t.Fatalf("got %d threads, want 1", len(got))
+	}
+	if got[0].root != 5 {
+		t.Fatalf("root = %d, want 5 (must match the all-mail view)", got[0].root)
+	}
+	if want := [][]imap.UID{{5, 9, 13}}; !sameGroups(groupsOf(got), want) {
+		t.Fatalf("members = %v, want %v", groupsOf(got), want)
+	}
+}
+
+func TestMessageIDsAndNormalize(t *testing.T) {
+	got := messageIDs("<A@x>\r\nReferences: <b@y> <A@x>\r\n")
+	if want := []string{"a@x", "b@y"}; len(got) != 2 || got[0] != want[0] || got[1] != want[1] {
+		t.Fatalf("messageIDs = %v, want %v (lowercased, deduped, in order)", got, want)
+	}
+	if s := normalizeMessageID("  <Foo@Bar>  "); s != "foo@bar" {
+		t.Fatalf("normalizeMessageID = %q, want %q", s, "foo@bar")
+	}
 }

@@ -461,6 +461,21 @@ func (d *daemon) serve(conn net.Conn) {
 				}
 				d.notifier.InvokeByID(uint32(id), act)
 			}
+		case "openconv":
+			// Deep-link from outside the client (a CLI, a cross-app digest): navigate
+			// the UI to a conversation, reusing the exact broadcast a clicked
+			// notification produces — so there's no second navigation path to keep in
+			// sync. Pairs with summonui when the caller also wants the window raised.
+			//
+			// Validate first: the UI clears its state to switch account, so an unknown
+			// account would blank the mail list with no folders to load and leave it
+			// stuck until the user re-picks an account by hand.
+			if cmd.ID == "" || d.providers[cmd.Account] == nil {
+				d.sendTo(conn, map[string]any{"type": "toast", "text": "Unknown account or conversation"})
+				break
+			}
+			d.broadcast(map[string]any{"type": "openconv", "account": cmd.Account,
+				"id": cmd.ID, "subject": cmd.Subject, "unread": cmd.Unread})
 		case "summarizeEnable":
 			// config write (no provider needed) — handle inline, mirror dsqrd's
 			// summarizeEnable dispatch (openai / anthropic key, or a keyless cli).
@@ -1581,7 +1596,9 @@ func main() {
 			d.broadcast(map[string]any{"type": "readmarked", "account": k.A, "id": k.ID})
 			return
 		}
-		d.broadcast(map[string]any{"type": "openconv", "account": k.A, "id": k.ID, "subject": k.S})
+		// unread:true — a notification only fires for unread mail, so the UI must
+		// mark it read once the fetch lands (badge + server state).
+		d.broadcast(map[string]any{"type": "openconv", "account": k.A, "id": k.ID, "subject": k.S, "unread": true})
 	})
 
 	for name, p := range d.providers {

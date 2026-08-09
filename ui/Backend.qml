@@ -696,11 +696,13 @@ Singleton {
             if (i >= 0) convsModel.remove(i)
             if (openConvId === e.id) closeConv()
         } else if (e.type === "openconv") {
-            // notification deep-link: land on the conversation itself.
-            // unread:true — it came from a notification, so mark-read must
-            // fire after the fetch (badge + server state)
+            // deep-link (clicked notification, or an external openconv command):
+            // land on the conversation itself. The sender says whether it was
+            // unread — a notification always is, so mark-read fires after the
+            // fetch; an external link to an already-read thread must NOT fire it,
+            // or the folder badge drifts below the real count.
             if (e.account !== currentAccount) selectAccount(e.account)
-            openConv({ tid: e.id, subject: e.subject || "", unread: true })
+            openConv({ tid: e.id, subject: e.subject || "", unread: e.unread === true })
         } else if (e.type === "contacts") {
             contactsResult(e.items || [], e.query || "")
         } else if (e.type === "readmarked") {

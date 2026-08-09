@@ -355,32 +355,32 @@ func (d *daemon) accountsPayload() map[string]any {
 }
 
 type command struct {
-	Type    string   `json:"type"`
-	Account string   `json:"account"`
-	Folder  string   `json:"folder"`
-	ID      string   `json:"id"`
-	Cursor  string   `json:"cursor"`
-	Text    string   `json:"text"`
-	Query   string   `json:"query"`
-	Unread  bool     `json:"unread"`
-	To      string   `json:"to"`
-	Cc      string   `json:"cc"`
-	Bcc     string   `json:"bcc"`
-	Subject string   `json:"subject"`
-	Body    string   `json:"body"`
-	ReplyTo string   `json:"replyTo"`
-	Conv    string   `json:"conv"`
-	Paths   []string `json:"paths"`
-	Scope    string  `json:"scope"`    // summarize: thread | message | inbox
-	Provider string  `json:"provider"` // summarizeEnable: cli id / openai / anthropic
-	APIKey   string  `json:"api_key"`  // summarizeEnable
-	Question string  `json:"question"` // summarize: framing (initial) or a follow-up question
-	Followup bool    `json:"followup"` // summarize: true = Q&A append; false = the (framed) summary
-	IDs      []string `json:"ids"`     // summarize scope "selection": the picked conversation ids
-	Start   string   `json:"start"`
-	End     string   `json:"end"`
-	Meet    bool     `json:"meet"`
-	Forward string   `json:"forward"`
+	Type     string   `json:"type"`
+	Account  string   `json:"account"`
+	Folder   string   `json:"folder"`
+	ID       string   `json:"id"`
+	Cursor   string   `json:"cursor"`
+	Text     string   `json:"text"`
+	Query    string   `json:"query"`
+	Unread   bool     `json:"unread"`
+	To       string   `json:"to"`
+	Cc       string   `json:"cc"`
+	Bcc      string   `json:"bcc"`
+	Subject  string   `json:"subject"`
+	Body     string   `json:"body"`
+	ReplyTo  string   `json:"replyTo"`
+	Conv     string   `json:"conv"`
+	Paths    []string `json:"paths"`
+	Scope    string   `json:"scope"`    // summarize: thread | message | inbox
+	Provider string   `json:"provider"` // summarizeEnable: cli id / openai / anthropic
+	APIKey   string   `json:"api_key"`  // summarizeEnable
+	Question string   `json:"question"` // summarize: framing (initial) or a follow-up question
+	Followup bool     `json:"followup"` // summarize: true = Q&A append; false = the (framed) summary
+	IDs      []string `json:"ids"`      // summarize scope "selection": the picked conversation ids
+	Start    string   `json:"start"`
+	End      string   `json:"end"`
+	Meet     bool     `json:"meet"`
+	Forward  string   `json:"forward"`
 }
 
 func (d *daemon) serve(conn net.Conn) {

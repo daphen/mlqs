@@ -1133,7 +1133,7 @@ Rectangle {
                     elide: Text.ElideRight
                 }
 
-                // calendar invite: RSVP straight from the mail (y / m / x on
+                // calendar invite: RSVP straight from the mail (⇧Y / m / n on
                 // the focused message do the same via keys)
                 Row {
                     visible: modelData.hasInvite === true
@@ -1152,7 +1152,7 @@ Rectangle {
                     }
                     Repeater {
                         model: [
-                            { label: "accept", status: "accepted", cap: "y" },
+                            { label: "accept", status: "accepted", cap: "⇧Y" },
                             { label: "maybe", status: "tentative", cap: "m" },
                             { label: "decline", status: "declined", cap: "n" }
                         ]

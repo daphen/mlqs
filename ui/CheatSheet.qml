@@ -52,7 +52,7 @@ Modal {
             [["j"], "Scroll down"], [["k"], "Scroll up"],
             [["⇧j"], "Next message"], [["⇧k"], "Previous message"],
             [["↵"], "Cursor in message"], [["v"], "Visual select in message"],
-            [["y"], "Yank hints (invites: accept)"], [["⇧y"], "Copy whole message"],
+            [["y"], "Yank hints"], [["⇧y"], "Copy whole message · invites: accept"],
             [["m"], "RSVP tentative"], [["n"], "RSVP decline"],
             [["i"], "Reply"], [["a"], "Toggle reply-all"], [["r"], "Reply to focused"],
             [["⇧f"], "Forward"], [["f"], "Link hints"], [["o"], "Open in browser"],

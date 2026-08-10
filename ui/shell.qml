@@ -563,6 +563,27 @@ FloatingWindow {
                 e.accepted = true; return
             }
 
+            // Calendar-invite RSVP: ⇧Y accept · m maybe · n decline. MUST run before
+            // the cursor-mode block, which owns y/⇧Y for yanking and swallows every
+            // other key — and an invite is always a single-message conversation, which
+            // auto-enters cursor mode, so the copies in the main switch below were
+            // unreachable. Accept is ⇧Y, not y, because y is the yank prefix.
+            if (inConv && !ctrl && !win.gPending && !win.capturing) {
+                const inv = conv.inviteMsg()
+                if (inv) {
+                    const shifted = e.modifiers & Qt.ShiftModifier
+                    if (shifted && e.key === Qt.Key_Y) {
+                        Backend.rsvpMail(inv.id, "accepted"); e.accepted = true; return
+                    }
+                    if (!shifted && e.key === Qt.Key_M) {
+                        Backend.rsvpMail(inv.id, "tentative"); e.accepted = true; return
+                    }
+                    if (!shifted && e.key === Qt.Key_N) {
+                        Backend.rsvpMail(inv.id, "declined"); e.accepted = true; return
+                    }
+                }
+            }
+
             // in-message cursor mode owns the keyboard in a conversation:
             // motions move the cursor, v anchors a selection, y yanks it.
             // Everything not handled is swallowed (e must not archive mid-select)
@@ -787,12 +808,9 @@ FloatingWindow {
                 if (!inConv) Backend.toggleStar(index.current())
                 break
             case Qt.Key_Y:
+                // invite accept is ⇧Y, handled above (before cursor mode)
                 if (inConv && (e.modifiers & Qt.ShiftModifier)) conv.yankWholeMessage()
-                else if (inConv && conv.inviteMsg()) Backend.rsvpMail(conv.inviteMsg().id, "accepted")
                 else if (inConv) conv.startYank()
-                break
-            case Qt.Key_M:
-                if (inConv && conv.inviteMsg()) Backend.rsvpMail(conv.inviteMsg().id, "tentative")
                 break
             case Qt.Key_E:
                 if (inConv) Backend.archiveConv(Backend.openConvId)
@@ -830,7 +848,7 @@ FloatingWindow {
                 else if (inConv) conv.startHints()
                 break
             case Qt.Key_N:
-                if (inConv && conv.inviteMsg()) { Backend.rsvpMail(conv.inviteMsg().id, "declined"); break }
+                // invite decline is handled above (before cursor mode)
                 composer.composeNew()
                 break
 

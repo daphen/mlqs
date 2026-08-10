@@ -568,7 +568,9 @@ FloatingWindow {
             // other key — and an invite is always a single-message conversation, which
             // auto-enters cursor mode, so the copies in the main switch below were
             // unreachable. Accept is ⇧Y, not y, because y is the yank prefix.
-            if (inConv && !ctrl && !win.gPending && !win.capturing) {
+            // NOT gated on win.capturing: that is true whenever cursorMode is
+            // (see its definition), which is precisely the state this must survive.
+            if (inConv && !ctrl && !win.gPending) {
                 const inv = conv.inviteMsg()
                 if (inv) {
                     const shifted = e.modifiers & Qt.ShiftModifier

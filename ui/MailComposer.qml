@@ -18,6 +18,25 @@ Rectangle {
     border.color: Qt.rgba(Theme.fg.r, Theme.fg.g, Theme.fg.b, Theme.mode === "light" ? 0.15 : 0.10)
 
     property int sel: 0   // 0 to · 1 cc · 2 subject · 3 body
+    // The sending identity, shown in the From row and cycled with ⌃f. Always set
+    // explicitly so a send never falls back to whichever account happened to be
+    // current — unfiltered there is no meaningful "current" one.
+    property string fromAccount: ""
+    readonly property string fromEmail:
+        (Backend.workspaces.find(w => w.id === comp.fromAccount) || ({})).email || ""
+    function _defaultFrom() {
+        // a filtered view names the account; otherwise the first configured one.
+        // Deliberately NOT openConvAccount — a new mail is not part of the thread
+        // that happens to be open behind the composer.
+        if (Backend.accountFilter !== "") return Backend.accountFilter
+        return (Backend.workspaces[0] || ({})).id || Backend.currentAccount
+    }
+    function cycleFrom() {
+        const ids = Backend.workspaces.map(w => w.id)
+        if (ids.length < 2) return
+        const i = ids.indexOf(comp.fromAccount)
+        comp.fromAccount = ids[((i < 0 ? 0 : i) + 1) % ids.length]
+    }
     // recipient autocomplete (chat Autocomplete grammar: fg tint + hairpin)
     property var acItems: []
     property int acSel: 0
@@ -64,6 +83,7 @@ Rectangle {
     function composeNew() {
         mode = "new"; replyToId = ""; convId = ""; forwardId = ""; paths = []
         toField.text = ""; ccField.text = ""; subjField.text = ""; bodyArea.text = ""
+        fromAccount = _defaultFrom()
         sel = 0
         visible = true
         toField.input.forceActiveFocus()
@@ -71,7 +91,7 @@ Rectangle {
 
     // mailto: from a message body — recipient prefilled, cursor on subject
     function composeTo(addr) {
-        composeNew()
+        composeNew()   // sets From to the default: a mailto: is fresh mail, not part of a thread
         toField.text = addr
         subjField.input.forceActiveFocus()
     }
@@ -79,6 +99,7 @@ Rectangle {
     // forward a message: daemon quotes the original + re-attaches its files
     function forward(m) {
         if (!m || !m.id) return
+        fromAccount = Backend.openConvAccount || _defaultFrom()   // a forward leaves from the mailbox that received it
         mode = "forward"; replyToId = ""; forwardId = m.id
         convId = Backend.openConvId; paths = []
         toField.text = ""; ccField.text = ""; bodyArea.text = ""
@@ -95,6 +116,7 @@ Rectangle {
     // reply to the newest message; all=true adds every recipient minus self.
     // Reply-To wins over From (RFC 5322) — list servers depend on it.
     function reply(all) {
+        fromAccount = Backend.openConvAccount || _defaultFrom()   // a reply must leave from the mailbox the thread arrived in
         const msgs = Backend.messages
         if (msgs.length === 0) return
         const m = msgs[msgs.length - 1]
@@ -123,6 +145,7 @@ Rectangle {
     function doSend() {
         if (toField.text.trim() === "") { Backend.toast("no recipient"); return }
         Backend.sendMail({
+            account: comp.fromAccount,
             to: toField.text, cc: ccField.text, subject: subjField.text,
             body: bodyArea.text, replyTo: replyToId, conv: convId,
             forward: forwardId, paths: paths
@@ -164,6 +187,7 @@ Rectangle {
         if (e.key === Qt.Key_Escape) { compKeys.forceActiveFocus(); e.accepted = true; return true }
         if (ctrl && (e.key === Qt.Key_Return || e.key === Qt.Key_Enter)) { doSend(); e.accepted = true; return true }
         if (ctrl && e.key === Qt.Key_O) { attachClipboardPath(); e.accepted = true; return true }
+        if (ctrl && e.key === Qt.Key_F) { cycleFrom(); e.accepted = true; return true }
         return false
     }
 
@@ -219,6 +243,39 @@ Rectangle {
             color: Theme.fg_muted
             font.family: Theme.fontFamily; font.pixelSize: 12
             elide: Text.ElideRight
+        }
+
+        // From: which mailbox this leaves from. Read-only text (not a field in the
+        // j/k cycle — it changes rarely); ⌃f cycles it when there's more than one.
+        Rectangle {
+            width: parent.width; height: 34
+            radius: Theme.radiusSm
+            color: Theme.mode === "light" ? Theme.bg : Theme.surface2
+            border.width: 1; border.color: Theme.hairline
+            Row {
+                anchors.fill: parent; anchors.leftMargin: 10; anchors.rightMargin: 10
+                spacing: 8
+                Text {
+                    text: "From"; color: Theme.fg_muted
+                    width: 56
+                    font.family: Theme.fontFamily; font.pixelSize: 12
+                    anchors.verticalCenter: parent.verticalCenter
+                }
+                Text {
+                    anchors.verticalCenter: parent.verticalCenter
+                    text: comp.fromAccount + (comp.fromEmail !== "" ? "  ·  " + comp.fromEmail : "")
+                    color: Theme.fg
+                    font.family: Theme.fontFamily; font.pixelSize: 13
+                    elide: Text.ElideRight
+                }
+            }
+            KeyCap {
+                visible: Backend.workspaces.length > 1
+                text: "⌃f"; small: true; ghost: true
+                anchors.right: parent.right; anchors.rightMargin: 10
+                anchors.verticalCenter: parent.verticalCenter
+            }
+            TapHandler { onTapped: comp.cycleFrom() }
         }
 
         LabeledField { id: toField; label: "To"; idx: 0 }

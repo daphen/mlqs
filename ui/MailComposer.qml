@@ -103,7 +103,9 @@ Rectangle {
         toField.text = [...new Set(sender.map(a => a.email).filter(e => e))].join(", ")
         let cc = []
         if (all) {
-            const self = (Backend.workspaces.find(w => w.id === Backend.currentAccount) || {}).email || ""
+            // self = the replied-to conversation's mailbox, so reply-all doesn't
+            // add my own address on a thread that belongs to the other account
+            const self = (Backend.workspaces.find(w => w.id === (Backend.openConvAccount || Backend.currentAccount)) || {}).email || ""
             const senderSet = sender.map(a => a.email)
             const rest = (m.to || []).concat(m.cc || [])
                 .map(a => a.email).filter(e => e && e !== self && senderSet.indexOf(e) < 0)

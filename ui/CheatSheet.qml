@@ -92,7 +92,8 @@ Modal {
         ]},
         { title: "Global", rows: [
             [["⌃d", "⌃u"], "Half-page down / up"], [["⌃h", "⌃l"], "Sidebar / index"],
-            [["⌃s"], "Account menu (j/k, ↵)"], [["⌃⇧h", "⌃⇧l"], "Prev / next account"],
+            [["gu"], "All accounts (merged inbox)"],
+            [["⌃s"], "Account filter (All / one, j/k, ↵)"], [["⌃⇧h", "⌃⇧l"], "Cycle All / accounts"],
             [["⌃⇧r"], "Check for updates"], [["?"], "This cheat sheet"],
         ]},
         { title: "Insert", rows: [

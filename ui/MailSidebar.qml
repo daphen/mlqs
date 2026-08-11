@@ -43,13 +43,14 @@ Rectangle {
     readonly property var visibleFolders: labelsCollapsed
         ? Backend.folders.filter(f => f.section !== "labels") : Backend.folders
 
-    // pinned virtual rows above the folders: Threads (-2), Calendar (-1)
+    // pinned virtual rows above the folders: All (-3), Threads (-2), Calendar (-1)
     function move(d) {
         if (visibleFolders.length === 0) return
-        sel = Math.max(-2, Math.min(visibleFolders.length - 1, sel + d))
+        sel = Math.max(-3, Math.min(visibleFolders.length - 1, sel + d))
         if (sel >= 0) list.positionViewAtIndex(sel, ListView.Contain)
     }
     function choose() {
+        if (sel === -3) { Backend.selectUnified(); return }
         if (sel === -2) { Backend.selectThreads(); return }
         if (sel === -1) { Backend.selectCalendar(); return }
         const f = visibleFolders[sel]
@@ -58,6 +59,7 @@ Rectangle {
     Connections {
         target: Backend
         function onCurrentFolderIdChanged() {
+            if (Backend.currentFolderId === "__all") { bar.sel = -3; return }
             if (Backend.currentFolderId === "__threads") { bar.sel = -2; return }
             if (Backend.currentFolderId === "__calendar") { bar.sel = -1; return }
             const i = bar.visibleFolders.findIndex(f => f.id === Backend.currentFolderId)
@@ -123,8 +125,11 @@ Rectangle {
             color: Qt.rgba(Theme.fg.r, Theme.fg.g, Theme.fg.b, 0.10)
             border.width: 1; border.color: Theme.hairline
             readonly property string acctName:
-                (Backend.workspaces.find(w => w.id === Backend.currentAccount) || ({})).name || ""
-            readonly property int othersUnread:
+                Backend.accountFilter === "" ? "All accounts"
+                : ((Backend.workspaces.find(w => w.id === Backend.currentAccount) || ({})).name || "")
+            // unfiltered there is no "other" account to summarise — every inbox is
+            // already in the list, so the aggregate badge would double-count
+            readonly property int othersUnread: Backend.accountFilter === "" ? 0 :
                 Backend.workspaces.reduce((s, w) =>
                     s + (w.id !== Backend.currentAccount ? (Backend.accountUnread[w.id] || 0) : 0), 0)
             Row {
@@ -170,9 +175,71 @@ Rectangle {
     }
 
     // pinned Threads: conversations you participate in, across all folders
+    // pinned All accounts: every account's inbox merged (the resting view)
+    Item {
+        id: allRow
+        anchors { top: acctHeader.bottom; topMargin: 10; left: parent.left; right: parent.right }
+        height: 42
+        readonly property bool isOpen: Backend.unified
+        readonly property bool primary: bar.active && bar.sel === -3
+        // an account whose inbox failed to load — the list still shows the rest
+        readonly property int failed: Object.keys(Backend.acctError || ({})).length
+        Rectangle {
+            anchors.fill: parent
+            anchors.leftMargin: 6; anchors.rightMargin: 6
+            radius: height / 2
+            color: allRow.primary ? Theme.fg
+                 : (allRow.isOpen && !bar.active ? Qt.rgba(Theme.fg.r, Theme.fg.g, Theme.fg.b, 0.06)
+                           : hovA.hovered ? Qt.rgba(Theme.fg.r, Theme.fg.g, Theme.fg.b, 0.04) : "transparent")
+        }
+        HoverHandler { id: hovA }
+        Rectangle {
+            visible: bar.active && bar.sel === -3
+            anchors.left: parent.left; anchors.leftMargin: 20
+            anchors.verticalCenter: parent.verticalCenter
+            width: 3; height: 16; radius: 2; color: Theme.cursor
+        }
+        JumpCap {
+            cap: "gu"; onInk: allRow.primary
+            visible: !(bar.active && bar.sel === -3)
+            anchors.left: parent.left; anchors.leftMargin: 10
+            anchors.verticalCenter: parent.verticalCenter
+        }
+        Row {
+            anchors.fill: parent
+            anchors.leftMargin: 36
+            spacing: 13
+            Icon {
+                width: 18; height: 18
+                anchors.verticalCenter: parent.verticalCenter
+                name: "inbox-arrow-down"
+                color: allRow.primary ? Theme.bg
+                     : (allRow.isOpen || bar.sel === -3) ? Theme.fg : Theme.fg_muted
+            }
+            Text {
+                anchors.verticalCenter: parent.verticalCenter
+                text: "All accounts"
+                color: allRow.primary ? Theme.bg
+                     : (allRow.isOpen || bar.sel === -3) ? Theme.fg : Theme.dimmedFg
+                font.family: Theme.fontFamily; font.hintingPreference: Font.PreferNoHinting
+                font.pixelSize: 14
+            }
+            Icon {
+                width: 13; height: 13
+                anchors.verticalCenter: parent.verticalCenter
+                visible: allRow.failed > 0
+                name: "triangle-warning"
+                color: allRow.primary ? Theme.bg : Theme.red
+            }
+        }
+        TapHandler {
+            onTapped: { bar.sel = -3; Backend.selectUnified() }
+        }
+    }
+
     Item {
         id: threadsRow
-        anchors { top: acctHeader.bottom; topMargin: 10; left: parent.left; right: parent.right }
+        anchors { top: allRow.bottom; left: parent.left; right: parent.right }
         height: 42
         readonly property bool isOpen: Backend.currentFolderId === "__threads"
         readonly property bool primary: bar.active && bar.sel === -2

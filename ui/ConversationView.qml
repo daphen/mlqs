@@ -106,7 +106,9 @@ Rectangle {
     property string replyTargetId: ""
     property bool replyAll: true
     readonly property string myEmail: {
-        const w = Backend.workspaces.find(x => x.id === Backend.currentAccount)
+        // the OPEN conversation's account — in a merged inbox the selected account
+        // is not necessarily this thread's, and "me" detection drives reply-all
+        const w = Backend.workspaces.find(x => x.id === (Backend.openConvAccount || Backend.currentAccount))
         return w && w.email ? w.email.toLowerCase() : ""
     }
     function _lastReal() {

@@ -286,9 +286,23 @@ Rectangle {
                 }
             }
 
+            // merged inbox: name the mailbox each row came from. Muted text on the
+            // right, the same treatment CalendarView already uses for its merged
+            // rows — only shown when unfiltered, since a filtered list is one account.
+            Text {
+                id: acctText
+                anchors.right: parent.right; anchors.rightMargin: 30
+                anchors.verticalCenter: parent.verticalCenter
+                visible: Backend.unified && text !== ""
+                text: row.account || ""
+                color: row.sel ? Qt.rgba(Theme.bg.r, Theme.bg.g, Theme.bg.b, 0.75) : Theme.fg_muted
+                font.family: Theme.fontFamily; font.pixelSize: 11
+            }
+
             Text {
                 id: when
-                anchors.right: parent.right; anchors.rightMargin: 30
+                anchors.right: acctText.visible ? acctText.left : parent.right
+                anchors.rightMargin: acctText.visible ? 12 : 30
                 anchors.verticalCenter: parent.verticalCenter
                 text: row.dateStr
                 color: row.sel ? Qt.rgba(Theme.bg.r, Theme.bg.g, Theme.bg.b, 0.75) : Theme.fg_muted

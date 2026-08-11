@@ -125,13 +125,19 @@ FloatingWindow {
         grabsKeys: true                          // ⌃s opens it focused; j/k navigate
         scrimOpacity: 0.28                       // separate the panel from the sidebar behind
         onClosed: keys.forceActiveFocus()        // hand keyboard back to the router
-        currentId: Backend.currentAccount
-        model: Backend.workspaces.map(w => ({
+        // "All accounts" is the first row, not a separate view: picking an account
+        // filters the merged inbox (and scopes you to its other folders).
+        currentId: Backend.accountFilter
+        model: [({
+            id: "",
+            label: "All accounts",
+            badge: Backend.workspaces.reduce((n, w) => n + (Backend.accountUnread[w.id] || 0), 0)
+        })].concat(Backend.workspaces.map(w => ({
             id: w.id,
             label: w.name,
             badge: Backend.accountUnread[w.id] || 0
-        }))
-        onActivated: id => Backend.selectAccount(id)
+        })))
+        onActivated: id => id === "" ? Backend.selectUnified() : Backend.selectAccount(id)
     }
 
     MailComposer {
@@ -545,8 +551,8 @@ FloatingWindow {
                     else if (win.gPending) { win.gPending = false; index.toTop() }
                     else win.arm("g")
                     break
-                case Qt.Key_E: Backend.batchArchive(index.selIds()); index.visualEnd(); break
-                case Qt.Key_D: Backend.batchTrash(index.selIds()); index.visualEnd(); break
+                case Qt.Key_E: Backend.batchArchive(index.selRows()); index.visualEnd(); break
+                case Qt.Key_D: Backend.batchTrash(index.selRows()); index.visualEnd(); break
                 case Qt.Key_R: Backend.batchRead(index.selRows()); index.visualEnd(); break
                 case Qt.Key_X: Backend.batchStar(index.selRows()); index.visualEnd(); break
                 case Qt.Key_S: { const sel = index.selIds(); index.visualEnd(); Backend.summarizeSelection(sel); break }
@@ -684,6 +690,9 @@ FloatingWindow {
                     }
                     break
                 case Qt.Key_I: go(shifted ? "starred" : "inbox"); e.accepted = true; return
+                case Qt.Key_U:
+                    // gu: back to the merged inbox (All accounts)
+                    Backend.selectUnified(); win.pane = "index"; e.accepted = true; return
                 case Qt.Key_S: go(shifted ? "spam" : "sent"); e.accepted = true; return
                 case Qt.Key_D: go("drafts"); e.accepted = true; return
                 case Qt.Key_T:
@@ -745,7 +754,6 @@ FloatingWindow {
             }
             if (ctrl && e.key === Qt.Key_L) { win.pane = "index"; e.accepted = true; return }
             // account switch (cycle; tabs in the sidebar header are clickable too)
-            if (ctrl && e.key === Qt.Key_S) { Backend.cycleAccount(1); e.accepted = true; return }
             // half-page
             if (ctrl && (e.key === Qt.Key_D || e.key === Qt.Key_U)) {
                 const d = e.key === Qt.Key_D ? 1 : -1
@@ -815,14 +823,14 @@ FloatingWindow {
                 else if (inConv) conv.startYank()
                 break
             case Qt.Key_E:
-                if (inConv) Backend.archiveConv(Backend.openConvId)
-                else if (index.current()) Backend.archiveConv(index.current().tid)
+                if (inConv) Backend.archiveConv({ tid: Backend.openConvId, account: Backend.openConvAccount })
+                else if (index.current()) Backend.archiveConv(index.current())
                 break
             case Qt.Key_D:
                 if (win.dPending) {
                     win.dPending = false
-                    if (inConv) Backend.trashConv(Backend.openConvId)
-                    else if (index.current()) Backend.trashConv(index.current().tid)
+                    if (inConv) Backend.trashConv({ tid: Backend.openConvId, account: Backend.openConvAccount })
+                    else if (index.current()) Backend.trashConv(index.current())
                 } else win.arm("d")
                 break
             case Qt.Key_I:

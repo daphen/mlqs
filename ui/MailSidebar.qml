@@ -46,10 +46,11 @@ Rectangle {
     // pinned virtual rows above the folders: All (-3), Threads (-2), Calendar (-1)
     function move(d) {
         if (visibleFolders.length === 0) return
-        sel = Math.max(-3, Math.min(visibleFolders.length - 1, sel + d))
+        sel = Math.max(-4, Math.min(visibleFolders.length - 1, sel + d))
         if (sel >= 0) list.positionViewAtIndex(sel, ListView.Contain)
     }
     function choose() {
+        if (sel === -4) { Backend.selectFiltered(); return }
         if (sel === -3) { Backend.selectUnified(); return }
         if (sel === -2) { Backend.selectThreads(); return }
         if (sel === -1) { Backend.selectCalendar(); return }
@@ -59,6 +60,7 @@ Rectangle {
     Connections {
         target: Backend
         function onCurrentFolderIdChanged() {
+            if (Backend.currentFolderId === "__filtered") { bar.sel = -4; return }
             if (Backend.currentFolderId === "__all") { bar.sel = -3; return }
             if (Backend.currentFolderId === "__threads") { bar.sel = -2; return }
             if (Backend.currentFolderId === "__calendar") { bar.sel = -1; return }
@@ -342,6 +344,58 @@ Rectangle {
         }
     }
 
+    // pinned Filtered: everything the rules hid, so an over-broad rule is visible
+    // rather than silent mail loss
+    Item {
+        id: filtRow
+        anchors { top: calRow.bottom; left: parent.left; right: parent.right }
+        height: 42
+        visible: (Backend.rules || []).length > 0
+        readonly property bool isOpen: Backend.filteredView
+        readonly property bool primary: bar.active && bar.sel === -4
+        Rectangle {
+            anchors.fill: parent
+            anchors.leftMargin: 6; anchors.rightMargin: 6
+            radius: height / 2
+            color: filtRow.primary ? Theme.fg
+                 : (filtRow.isOpen && !bar.active ? Qt.rgba(Theme.fg.r, Theme.fg.g, Theme.fg.b, 0.06)
+                           : hovF.hovered ? Qt.rgba(Theme.fg.r, Theme.fg.g, Theme.fg.b, 0.04) : "transparent")
+        }
+        HoverHandler { id: hovF }
+        Rectangle {
+            visible: bar.active && bar.sel === -4
+            anchors.left: parent.left; anchors.leftMargin: 20
+            anchors.verticalCenter: parent.verticalCenter
+            width: 3; height: 16; radius: 2; color: Theme.cursor
+        }
+        JumpCap {
+            cap: "gf"; onInk: filtRow.primary
+            visible: !(bar.active && bar.sel === -4)
+            anchors.left: parent.left; anchors.leftMargin: 10
+            anchors.verticalCenter: parent.verticalCenter
+        }
+        Row {
+            anchors.fill: parent
+            anchors.leftMargin: 36
+            spacing: 13
+            Icon {
+                width: 18; height: 18
+                anchors.verticalCenter: parent.verticalCenter
+                name: "filter"
+                color: filtRow.primary ? Theme.bg
+                     : (filtRow.isOpen || bar.sel === -4) ? Theme.fg : Theme.fg_muted
+            }
+            Text {
+                anchors.verticalCenter: parent.verticalCenter
+                text: "Filtered"
+                color: filtRow.primary ? Theme.bg
+                     : (filtRow.isOpen || bar.sel === -4) ? Theme.fg : Theme.dimmedFg
+                font.family: Theme.fontFamily; font.hintingPreference: Font.PreferNoHinting
+                font.pixelSize: 14
+            }
+        }
+        TapHandler { onTapped: { bar.sel = -4; Backend.selectFiltered() } }
+    }
     ListView {
         id: list
         anchors { top: calRow.bottom; topMargin: 2; left: parent.left; right: parent.right; bottom: parent.bottom }

@@ -45,6 +45,131 @@ import (
 	"golang.org/x/term"
 )
 
+// ruleSnapshot copies under the read lock — callers iterate without holding it.
+func (d *daemon) ruleSnapshot() []config.Rule {
+	d.rulesMu.RLock()
+	defer d.rulesMu.RUnlock()
+	if len(d.rules) == 0 {
+		return nil
+	}
+	out := make([]config.Rule, len(d.rules))
+	copy(out, d.rules)
+	return out
+}
+
+func (d *daemon) setRules(rules []config.Rule) {
+	d.rulesMu.Lock()
+	d.rules = rules
+	d.rulesMu.Unlock()
+}
+
+// convAddrs adapts provider senders to the config matcher (config can't import
+// provider without an import cycle).
+func convAddrs(c provider.Conversation) []config.Address {
+	out := make([]config.Address, 0, len(c.Senders))
+	for _, a := range c.Senders {
+		out = append(out, config.Address{Name: a.Name, Email: a.Email})
+	}
+	return out
+}
+
+func (d *daemon) hidden(rules []config.Rule, c provider.Conversation) bool {
+	return len(rules) > 0 && config.MatchAny(rules, convAddrs(c), c.Subject)
+}
+
+// applyRules drops hidden conversations. keepHidden inverts it, which is how the
+// Filtered view is served — same predicate, opposite sense, so the two can never
+// disagree about what is hidden.
+func (d *daemon) applyRules(convs []provider.Conversation, keepHidden bool) []provider.Conversation {
+	rules := d.ruleSnapshot()
+	if len(rules) == 0 {
+		if keepHidden {
+			return nil
+		}
+		return convs
+	}
+	out := make([]provider.Conversation, 0, len(convs))
+	for _, c := range convs {
+		if d.hidden(rules, c) == keepHidden {
+			out = append(out, c)
+		}
+	}
+	return out
+}
+
+// markHiddenRead keeps the sidebar badge honest. A folder's unread count is a
+// single integer from the provider with no per-conversation data behind it, so it
+// cannot be adjusted locally — making the provider's own count correct is the only
+// way the badge can agree with a filtered list. Fire-and-forget, and only for mail
+// that is still unread, so it is naturally idempotent.
+func (d *daemon) markHiddenRead(account string, convs []provider.Conversation) {
+	p := d.providers[account]
+	if p == nil {
+		return
+	}
+	for _, c := range convs {
+		if !c.Unread {
+			continue
+		}
+		id := c.ID
+		go func() {
+			if err := p.MarkRead(context.Background(), id, true); err != nil {
+				debuglog.Sync("filter markread %s/%s: %v", account, id, err)
+				return
+			}
+			d.db.SetConvFlags(account, id, "unread", false)
+		}()
+	}
+}
+
+func (d *daemon) rulesPayload() map[string]any {
+	r := d.ruleSnapshot()
+	if r == nil {
+		r = []config.Rule{}
+	}
+	return map[string]any{"type": "rules", "rules": r}
+}
+
+const suggestSys = `You classify email filter rules. Given a list of messages the user wants to hide, propose candidate filter rules from LOOSEST to TIGHTEST.
+Each rule may set senderEmail, senderName and/or subject; fields are ANDed; matching is case-insensitive substring unless "exact" is true.
+Reply with ONLY a JSON array, no prose:
+[{"label":"short human description","senderEmail":"","senderName":"","subject":"","exact":false}]
+Prefer few, meaningfully different candidates (2-4). A candidate that matches every listed message but as little else as possible is the most useful.`
+
+func (d *daemon) suggestRules(conn net.Conn, cmd command) {
+	cfg, _ := config.Load()
+	var sc config.SummarizeConfig
+	if cfg != nil && cfg.Summarize != nil {
+		sc = *cfg.Summarize
+	}
+	if sc.Provider == "" && sc.BaseURL == "" {
+		// no model configured — the UI's local candidates are the whole answer
+		d.sendTo(conn, map[string]any{"type": "ruleSuggest", "candidates": []any{}, "note": "no AI provider configured"})
+		return
+	}
+	var b strings.Builder
+	for _, it := range cmd.Items {
+		fmt.Fprintf(&b, "from: %s <%s>\nsubject: %s\n\n", it.SenderName, it.SenderEmail, it.Subject)
+	}
+	out, err := summarize.Ask(context.Background(), sc, b.String(), suggestSys)
+	if err != nil {
+		d.sendTo(conn, map[string]any{"type": "ruleSuggest", "candidates": []any{}, "note": err.Error()})
+		return
+	}
+	// models like to wrap JSON in prose or fences — take the outermost array
+	i, j := strings.Index(out, "["), strings.LastIndex(out, "]")
+	if i < 0 || j <= i {
+		d.sendTo(conn, map[string]any{"type": "ruleSuggest", "candidates": []any{}, "note": "unparseable suggestion"})
+		return
+	}
+	var cands []map[string]any
+	if err := json.Unmarshal([]byte(out[i:j+1]), &cands); err != nil {
+		d.sendTo(conn, map[string]any{"type": "ruleSuggest", "candidates": []any{}, "note": "unparseable suggestion"})
+		return
+	}
+	d.sendTo(conn, map[string]any{"type": "ruleSuggest", "candidates": cands})
+}
+
 func sockPath() string {
 	if d := os.Getenv("XDG_RUNTIME_DIR"); d != "" {
 		return filepath.Join(d, "mlqs.sock")
@@ -67,6 +192,12 @@ type daemon struct {
 	notifMu  sync.Mutex
 	notified map[string]string
 	notifier *notify.Notifier
+
+	// Filter rules, held in memory because the check runs on every arriving mail
+	// and every page of the list. d.cfg is a boot snapshot and is never re-read,
+	// so this is refreshed explicitly on write instead.
+	rulesMu sync.RWMutex
+	rules   []config.Rule
 
 	updateEvent map[string]any // latest updateAvailable event, replayed to new clients
 	updMu       sync.Mutex
@@ -355,32 +486,38 @@ func (d *daemon) accountsPayload() map[string]any {
 }
 
 type command struct {
-	Type     string   `json:"type"`
-	Account  string   `json:"account"`
-	Folder   string   `json:"folder"`
-	ID       string   `json:"id"`
-	Cursor   string   `json:"cursor"`
-	Text     string   `json:"text"`
-	Query    string   `json:"query"`
-	Unread   bool     `json:"unread"`
-	To       string   `json:"to"`
-	Cc       string   `json:"cc"`
-	Bcc      string   `json:"bcc"`
-	Subject  string   `json:"subject"`
-	Body     string   `json:"body"`
-	ReplyTo  string   `json:"replyTo"`
-	Conv     string   `json:"conv"`
-	Paths    []string `json:"paths"`
-	Scope    string   `json:"scope"`    // summarize: thread | message | inbox
-	Provider string   `json:"provider"` // summarizeEnable: cli id / openai / anthropic
-	APIKey   string   `json:"api_key"`  // summarizeEnable
-	Question string   `json:"question"` // summarize: framing (initial) or a follow-up question
-	Followup bool     `json:"followup"` // summarize: true = Q&A append; false = the (framed) summary
-	IDs      []string `json:"ids"`      // summarize scope "selection": the picked conversation ids
-	Start    string   `json:"start"`
-	End      string   `json:"end"`
-	Meet     bool     `json:"meet"`
-	Forward  string   `json:"forward"`
+	Type     string        `json:"type"`
+	Account  string        `json:"account"`
+	Folder   string        `json:"folder"`
+	ID       string        `json:"id"`
+	Cursor   string        `json:"cursor"`
+	Text     string        `json:"text"`
+	Query    string        `json:"query"`
+	Unread   bool          `json:"unread"`
+	To       string        `json:"to"`
+	Cc       string        `json:"cc"`
+	Bcc      string        `json:"bcc"`
+	Subject  string        `json:"subject"`
+	Body     string        `json:"body"`
+	ReplyTo  string        `json:"replyTo"`
+	Conv     string        `json:"conv"`
+	Paths    []string      `json:"paths"`
+	Scope    string        `json:"scope"`           // summarize: thread | message | inbox
+	Provider string        `json:"provider"`        // summarizeEnable: cli id / openai / anthropic
+	APIKey   string        `json:"api_key"`         // summarizeEnable
+	Question string        `json:"question"`        // summarize: framing (initial) or a follow-up question
+	Followup bool          `json:"followup"`        // summarize: true = Q&A append; false = the (framed) summary
+	IDs      []string      `json:"ids"`             // summarize scope "selection": the picked conversation ids
+	Rules    []config.Rule `json:"rules,omitempty"` // rulesSave: the full replacement list
+	Items    []struct {    // rulesuggest: the selection's fields, no bodies
+		SenderEmail string `json:"senderEmail"`
+		SenderName  string `json:"senderName"`
+		Subject     string `json:"subject"`
+	} `json:"items,omitempty"`
+	Start   string `json:"start"`
+	End     string `json:"end"`
+	Meet    bool   `json:"meet"`
+	Forward string `json:"forward"`
 }
 
 func (d *daemon) serve(conn net.Conn) {
@@ -395,6 +532,7 @@ func (d *daemon) serve(conn net.Conn) {
 	}()
 
 	d.sendTo(conn, d.accountsPayload())
+	d.sendTo(conn, d.rulesPayload())
 
 	// replay update-available state to a (re)connecting client, and re-check on
 	// connect (throttled) so restarting the app surfaces a new build immediately
@@ -476,6 +614,44 @@ func (d *daemon) serve(conn net.Conn) {
 			}
 			d.broadcast(map[string]any{"type": "openconv", "account": cmd.Account,
 				"id": cmd.ID, "subject": cmd.Subject, "unread": cmd.Unread})
+		case "rulesSave":
+			// The UI owns the whole list: it sends the replacement, we persist and
+			// re-broadcast. Simpler than add/delete verbs and impossible to desync.
+			if err := config.WriteRules(cmd.Rules); err != nil {
+				d.sendTo(conn, map[string]any{"type": "toast", "text": "Rules not saved: " + err.Error()})
+				break
+			}
+			d.setRules(cmd.Rules)
+			d.broadcast(d.rulesPayload())
+			// rules change what's visible; resync makes every client re-request the
+			// current view rather than us reimplementing that push here
+			d.broadcast(map[string]any{"type": "resync"})
+			d.broadcast(map[string]any{"type": "toast", "text": fmt.Sprintf("%d filter rule(s) saved", len(cmd.Rules))})
+		case "rules":
+			d.sendTo(conn, d.rulesPayload())
+		case "filtered":
+			// The Filtered list: the same predicate as the mailbox filter, inverted,
+			// so the two can never disagree about what is hidden. Served from the
+			// cache — which holds unfiltered rows because every UpsertConversations
+			// runs before its emit — so no schema change and no extra fetching.
+			inbox := ""
+			for _, f := range d.db.CachedFolders(cmd.Account) {
+				if f.Role == "inbox" {
+					inbox = f.ID
+					break
+				}
+			}
+			hidden := []provider.Conversation{}
+			if inbox != "" {
+				hidden = d.applyRules(d.db.CachedConversations(cmd.Account, inbox, 500), true)
+			}
+			d.sendTo(conn, map[string]any{"type": "filtered", "account": cmd.Account, "items": hidden})
+		case "rulesuggest":
+			// What do these messages have in common? The UI sends the selection's
+			// sender/subject fields (no bodies, no provider round-trip), we ask the
+			// model for candidate rules, loosest to tightest. The UI also computes
+			// obvious candidates locally, so this failing is not fatal.
+			go d.suggestRules(conn, cmd)
 		case "summarizeEnable":
 			// config write (no provider needed) — handle inline, mirror dsqrd's
 			// summarizeEnable dispatch (openai / anthropic key, or a keyless cli).
@@ -515,7 +691,7 @@ var htmlTagRE = regexp.MustCompile(`(?s)<[^>]*>`)
 // summarizeGather builds the plain-text transcript for a summarize scope from
 // the EXISTING provider accessors (no new fetch paths). For "inbox" it also
 // returns the unread conversation ids so the summary screen can mark them read.
-func summarizeGather(ctx context.Context, p provider.Provider, scope, id, conv, folder string, ids []string) (string, []string, error) {
+func summarizeGather(ctx context.Context, p provider.Provider, scope, id, conv, folder string, ids []string, rules []config.Rule) (string, []string, error) {
 	switch scope {
 	case "selection":
 		if len(ids) == 0 {
@@ -572,6 +748,20 @@ func summarizeGather(ctx context.Context, p provider.Provider, scope, id, conv, 
 				break
 			}
 			cur = pg.NextCursor
+		}
+		// hidden mail must not leak into an inbox summary either
+		if len(rules) > 0 {
+			keep := convs[:0]
+			for _, c := range convs {
+				addrs := make([]config.Address, 0, len(c.Senders))
+				for _, a := range c.Senders {
+					addrs = append(addrs, config.Address{Name: a.Name, Email: a.Email})
+				}
+				if !config.MatchAny(rules, addrs, c.Subject) {
+					keep = append(keep, c)
+				}
+			}
+			convs = keep
 		}
 		if len(convs) > 50 {
 			convs = convs[:50]
@@ -681,7 +871,7 @@ func (d *daemon) handle(conn net.Conn, cmd command) {
 			d.broadcast(map[string]any{"type": "summarizeSetup", "clis": summarize.AvailableCLIs()})
 			return
 		}
-		text, ids, gerr := summarizeGather(ctx, p, cmd.Scope, cmd.ID, cmd.Conv, cmd.Folder, cmd.IDs)
+		text, ids, gerr := summarizeGather(ctx, p, cmd.Scope, cmd.ID, cmd.Conv, cmd.Folder, cmd.IDs, d.ruleSnapshot())
 		if gerr != nil {
 			d.broadcast(map[string]any{"type": "summaryError", "text": gerr.Error()})
 			return
@@ -720,18 +910,32 @@ func (d *daemon) handle(conn net.Conn, cmd command) {
 		d.broadcast(ev)
 	case "conversations":
 		if cmd.Cursor != "" {
-			pg, err := p.ListConversations(ctx, cmd.Folder, cmd.Cursor, 50, false)
-			if err != nil {
-				fail(err)
-				return
+			// Filtering can gut a page, and the UI only asks for more once the list
+			// grows enough to scroll — a mostly-hidden page would therefore stall
+			// paging with a cursor still set. Keep fetching until there's enough to
+			// show (bounded, so a fully-filtered mailbox can't spin).
+			cur := cmd.Cursor
+			kept := []provider.Conversation{}
+			for i := 0; i < 6; i++ {
+				pg, err := p.ListConversations(ctx, cmd.Folder, cur, 50, false)
+				if err != nil {
+					fail(err)
+					return
+				}
+				d.db.UpsertConversations(cmd.Account, pg.Conversations)
+				d.markHiddenRead(cmd.Account, d.applyRules(pg.Conversations, true))
+				kept = append(kept, d.applyRules(pg.Conversations, false)...)
+				cur = pg.NextCursor
+				if cur == "" || len(kept) >= 15 {
+					break
+				}
 			}
-			d.db.UpsertConversations(cmd.Account, pg.Conversations)
 			d.sendTo(conn, map[string]any{"type": "conversations", "account": cmd.Account,
-				"folder": cmd.Folder, "items": pg.Conversations, "next": pg.NextCursor})
+				"folder": cmd.Folder, "items": kept, "next": cur})
 			return
 		}
 		// warm-start: paint the cached folder instantly, then fetch live below
-		if cached := d.db.CachedConversations(cmd.Account, cmd.Folder, 200); len(cached) > 0 {
+		if cached := d.applyRules(d.db.CachedConversations(cmd.Account, cmd.Folder, 200), false); len(cached) > 0 {
 			d.sendTo(conn, map[string]any{"type": "conversations", "account": cmd.Account,
 				"folder": cmd.Folder, "items": cached, "cached": true})
 		}
@@ -794,6 +998,11 @@ func (d *daemon) handle(conn net.Conn, cmd command) {
 			}
 			d.db.ReconcileFolderRead(cmd.Account, cmd.Folder, ids)
 		}
+		// Filter LAST. ReconcileFolderRead clears unread on cached rows absent from
+		// the unread list, so filtering before it would force hidden-but-unread rows
+		// to read in the cache and corrupt every later warm paint.
+		d.markHiddenRead(cmd.Account, d.applyRules(items, true))
+		items = d.applyRules(items, false)
 		d.sendTo(conn, map[string]any{"type": "conversations", "account": cmd.Account,
 			"folder": cmd.Folder, "items": items, "next": normal.NextCursor})
 	case "conversation":
@@ -1505,6 +1714,7 @@ func main() {
 		notified:    map[string]string{},
 		calNotified: map[string]bool{},
 	}
+	d.setRules(cfg.Rules)
 	if len(cfg.Accounts) == 0 {
 		log.Printf("no accounts configured — create %s", config.Path())
 	}

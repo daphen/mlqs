@@ -90,8 +90,14 @@ Singleton {
     function toRow(c, acct) {
         const a = acct || currentAccount
         const graced = (Date.now() - (readGrace[rowKey(a, c.id)] || 0)) < 90000
+        // the LAST sender, matching what notifications already call "who". `who`
+        // below is a display string (truncated, "+N", "(3)" suffix) and cannot be
+        // used to author a rule or to tell a bot apart from the address it mails via.
+        const sndrs = c.senders || []
+        const last = sndrs.length ? sndrs[sndrs.length - 1] : {}
         return {
             tid: c.id, account: a, subject: c.subject || "", snippet: c.snippet || "",
+            senderEmail: last.email || "", senderName: last.name || "",
             who: senderLine(c) + ((c.msgCount || 1) > 1 ? " (" + c.msgCount + ")" : ""),
             dateStr: fmtDate(c.date), dateMs: new Date(c.date).getTime(),
             unread: !!c.unread && !graced, starred: !!c.starred
@@ -104,6 +110,66 @@ Singleton {
             if (r.tid === id && (acct === undefined || r.account === acct)) return i
         }
         return -1
+    }
+
+    // ── filter rules ───────────────────────────────────────────────────────
+    // The daemon owns matching (it also suppresses notifications); the UI owns
+    // authoring. It sends the whole replacement list, so the two can't desync.
+    property var rules: []
+    signal ruleCandidates(var cands, string note)
+    function saveRules(list) { send({ type: "rulesSave", rules: list || [] }) }
+    function addRule(r) {
+        const id = "r" + Date.now() + Math.floor(Math.random() * 1000)
+        saveRules((rules || []).concat([Object.assign({ id: id }, r)]))
+    }
+    function deleteRule(id) { saveRules((rules || []).filter(r => r.id !== id)) }
+
+    // Ask the daemon's model what a selection has in common. The obvious candidates
+    // are computed locally too (localCandidates), so this still works for someone
+    // with no AI provider configured.
+    function suggestRules(rows) {
+        const items = (rows || []).map(r => ({
+            senderEmail: r.senderEmail || "", senderName: r.senderName || "", subject: r.subject || ""
+        }))
+        if (!items.length) return
+        send({ type: "rulesuggest", items: items })
+    }
+
+    // Deterministic "common denominator": whatever every selected row shares.
+    // This is what makes the GitHub case work without a model — the shared address
+    // and the shared name are both exact, and the pair is the tight rule.
+    function localCandidates(rows) {
+        if (!rows || !rows.length) return []
+        const allSame = f => rows.every(r => (r[f] || "") === (rows[0][f] || "")) ? (rows[0][f] || "") : ""
+        const email = allSame("senderEmail"), name = allSame("senderName")
+        const out = []
+        if (email && name) out.push({ label: "this sender AND name", senderEmail: email, senderName: name, exact: true })
+        if (email) out.push({ label: "anything from " + email, senderEmail: email, exact: true })
+        if (name) out.push({ label: "anyone named " + name, senderName: name, exact: true })
+        // a shared subject prefix, when it's long enough to be meaningful
+        const subs = rows.map(r => r.subject || "")
+        let pre = subs[0]
+        for (const t of subs) { let i = 0; while (i < pre.length && i < t.length && pre[i] === t[i]) i++; pre = pre.slice(0, i) }
+        pre = pre.trim()
+        if (pre.length >= 8) out.push({ label: 'subject starts "' + pre + '"', subject: pre })
+        return out
+    }
+
+    // How much would this candidate hide? Answered locally and instantly: that is
+    // the difference between hiding one bot and hiding all of GitHub.
+    function candidateReach(c, rows) {
+        const m = r => {
+            if (!c.senderEmail && !c.senderName && !c.subject) return false
+            const f = (want, got) => !want || (c.exact
+                ? (got || "").toLowerCase() === want.toLowerCase()
+                : (got || "").toLowerCase().indexOf(want.toLowerCase()) >= 0)
+            return f(c.senderEmail, r.senderEmail) && f(c.senderName, r.senderName) && f(c.subject, r.subject)
+        }
+        let inSel = 0
+        for (const r of (rows || [])) if (m(r)) inSel++
+        let inView = 0
+        for (let i = 0; i < convsModel.count; i++) if (m(convsModel.get(i))) inView++
+        return { sel: inSel, selTotal: (rows || []).length, view: inView }
     }
 
     // inbox unread per account (tab badges for the non-active accounts)
@@ -330,6 +396,20 @@ Singleton {
         if (f) selectFolder(f.id, f.name)
     }
 
+    // Filtered: everything the rules hid, served from the daemon's cache (which
+    // holds unfiltered truth because every write happens before its emit). Same
+    // fan-out shape as the merged inbox when unfiltered.
+    readonly property bool filteredView: currentFolderId === "__filtered"
+    function selectFiltered() {
+        currentFolderId = "__filtered"; currentFolderName = "Filtered"
+        openConvId = ""; messages = []
+        convsModel.clear(); nextCursor = ""; pendingCursor = ""
+        _convsByAccount = {}
+        loadingConvs = true
+        const accts = accountFilter === "" ? workspaces.map(w => w.id) : [accountFilter]
+        for (const a of accts) send({ type: "filtered", account: a })
+    }
+
     function selectThreads() {
         currentFolderId = "__threads"; currentFolderName = "Threads"
         convsModel.clear(); nextCursor = ""; pendingCursor = ""
@@ -349,6 +429,7 @@ Singleton {
     function selectFolder(id, name) {
         if (id === "__threads") { selectThreads(); return }
         if (id === "__all") { selectUnified(); return }
+        if (id === "__filtered") { selectFiltered(); return }
         openConvId = ""; messages = []
         _loadFolder(id, name)
     }
@@ -450,7 +531,8 @@ Singleton {
     function _snapRow(i) {
         const r = convsModel.get(i)
         return { idx: i, row: { tid: r.tid, account: r.account, subject: r.subject, snippet: r.snippet,
-                                who: r.who, dateStr: r.dateStr, dateMs: r.dateMs,
+                                who: r.who, senderEmail: r.senderEmail, senderName: r.senderName,
+                                dateStr: r.dateStr, dateMs: r.dateMs,
                                 unread: r.unread, starred: r.starred } }
     }
 
@@ -953,6 +1035,17 @@ Singleton {
             // or the folder badge drifts below the real count.
             if (!unified && e.account !== currentAccount) selectAccount(e.account)
             openConv({ tid: e.id, account: e.account, subject: e.subject || "", unread: e.unread === true })
+        } else if (e.type === "rules") {
+            rules = e.rules || []
+        } else if (e.type === "ruleSuggest") {
+            ruleCandidates(e.candidates || [], e.note || "")
+        } else if (e.type === "filtered") {
+            if (!filteredView) return
+            const acct = e.account || ""
+            const m = Object.assign({}, _convsByAccount); m[acct] = e.items || []; _convsByAccount = m
+            loadingConvs = false
+            // reuse the merged-inbox rebuild: same shape, one list across accounts
+            _rebuildUnified()
         } else if (e.type === "contacts") {
             contactsResult(e.items || [], e.query || "")
         } else if (e.type === "readmarked") {

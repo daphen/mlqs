@@ -41,6 +41,7 @@ Modal {
             [["⇧u"], "Apply update (when available)"],
             [["s"], "Summarize inbox (AI)"],
             [["n"], "Compose"], [["/"], "Search"], [["q"], "Hide window"],
+            [["z"], "Filters"], [["m"], "Filter mail like this"],
         ]},
         { title: "Go to", rows: [
             [["⇧i"], "Inbox"], [["⇧t"], "Threads"], [["⇧c"], "Calendar"],
@@ -63,7 +64,7 @@ Modal {
         { title: "Visual — index", rows: [
             [["j", "k"], "Extend selection"], [["e"], "Archive selection"],
             [["d"], "Trash selection"], [["r"], "Mark read"], [["x"], "Star"],
-            [["s"], "Summarize selection (AI)"],
+            [["s"], "Summarize selection (AI)"], [["⇧f"], "Suggest a filter (AI)"],
             [["⌃d", "⌃u"], "Half-page (extends)"], [["esc"], "Exit"],
         ]},
         { title: "Message cursor", rows: [

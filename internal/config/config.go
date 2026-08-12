@@ -46,6 +46,76 @@ type Account struct {
 type Config struct {
 	Accounts  []Account        `json:"accounts"`
 	Summarize *SummarizeConfig `json:"summarize,omitempty"`
+	Rules     []Rule           `json:"rules,omitempty"`
+}
+
+// Rule hides matching mail from the list AND from notifications. The fields are
+// ANDed: an empty field is "don't care", so {SenderEmail: "notifications@github.com",
+// SenderName: "lovable-ci-bot[bot]"} hides that bot without hiding the rest of
+// GitHub — which a single-field rule cannot express.
+//
+// Matching is deliberately limited to sender + subject: mail headers (List-Id,
+// Precedence) never reach a Conversation, and Snippet is not portable (a body
+// preview on Gmail/Graph, literally the subject on IMAP).
+type Rule struct {
+	ID          string `json:"id"`                    // stable handle for delete
+	SenderEmail string `json:"senderEmail,omitempty"` // substring, case-insensitive
+	SenderName  string `json:"senderName,omitempty"`
+	Subject     string `json:"subject,omitempty"`
+	Exact       bool   `json:"exact,omitempty"` // whole-field equality instead of substring
+	Created     string `json:"created,omitempty"`
+}
+
+// Match reports whether the rule hides this conversation. Every non-empty field
+// must match (AND). Senders are checked across the WHOLE thread, not just the
+// latest, so a noisy participant can't slip through by replying last.
+func (r Rule) Match(senders []Address, subject string) bool {
+	if r.SenderEmail == "" && r.SenderName == "" && r.Subject == "" {
+		return false // an empty rule must never hide everything
+	}
+	if r.Subject != "" && !fieldMatch(r.Subject, subject, r.Exact) {
+		return false
+	}
+	if r.SenderEmail == "" && r.SenderName == "" {
+		return true
+	}
+	for _, a := range senders {
+		okEmail := r.SenderEmail == "" || fieldMatch(r.SenderEmail, a.Email, r.Exact)
+		okName := r.SenderName == "" || fieldMatch(r.SenderName, a.Name, r.Exact)
+		if okEmail && okName {
+			return true
+		}
+	}
+	return false
+}
+
+func fieldMatch(want, got string, exact bool) bool {
+	w, g := strings.ToLower(strings.TrimSpace(want)), strings.ToLower(got)
+	if w == "" {
+		return true
+	}
+	if exact {
+		return g == w
+	}
+	return strings.Contains(g, w)
+}
+
+// MatchAny is the daemon's hot-path check.
+func MatchAny(rules []Rule, senders []Address, subject string) bool {
+	for _, r := range rules {
+		if r.Match(senders, subject) {
+			return true
+		}
+	}
+	return false
+}
+
+// Address mirrors provider.Address without importing it — internal/provider
+// imports nothing from config, and adding the reverse edge would be an import
+// cycle. Kept minimal on purpose.
+type Address struct {
+	Name  string
+	Email string
 }
 
 // SummarizeConfig is the optional "summarize" block in accounts.json: a keyless
@@ -80,6 +150,45 @@ func Load() (*Config, error) {
 		return nil, fmt.Errorf("parsing %s: %w", Path(), err)
 	}
 	return &c, nil
+}
+
+// WriteRules replaces the "rules" block, preserving every other key byte-for-byte.
+//
+// Unlike WriteSummarize this REFUSES to write when an existing config won't parse.
+// That writer tolerates a bad read (`_ = json.Unmarshal`), which means a corrupt
+// accounts.json would be replaced by a file containing only the written block —
+// silently destroying the account list. Rules are written far more often, so the
+// risk is not acceptable here.
+func WriteRules(rules []Rule) error {
+	p := Path()
+	m := map[string]json.RawMessage{}
+	if b, err := os.ReadFile(p); err == nil {
+		if err := json.Unmarshal(b, &m); err != nil {
+			return fmt.Errorf("refusing to write rules: %s is not valid JSON (%w)", p, err)
+		}
+	} else if !os.IsNotExist(err) {
+		return err
+	}
+	if rules == nil {
+		rules = []Rule{}
+	}
+	bb, err := json.Marshal(rules)
+	if err != nil {
+		return err
+	}
+	m["rules"] = bb
+	out, err := json.MarshalIndent(m, "", "  ")
+	if err != nil {
+		return err
+	}
+	if err := os.MkdirAll(filepath.Dir(p), 0755); err != nil {
+		return err
+	}
+	tmp := p + ".tmp"
+	if err := os.WriteFile(tmp, out, 0600); err != nil {
+		return err
+	}
+	return os.Rename(tmp, p)
 }
 
 // WriteSummarize merges a summarize block into accounts.json, preserving every

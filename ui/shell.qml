@@ -181,6 +181,13 @@ FloatingWindow {
         z: 103
         onClosed: keys.forceActiveFocus()
     }
+    // Filter rules: z reviews, m seeds from a row, F from a selection.
+    RulesModal {
+        id: rulesModal
+        z: 106
+        onClosed: keys.forceActiveFocus()
+    }
+
     SummarizeSetup {
         id: summarizeSetup
         z: 105
@@ -560,6 +567,8 @@ FloatingWindow {
                 case Qt.Key_R: Backend.batchRead(index.selRows()); index.visualEnd(); break
                 case Qt.Key_X: Backend.batchStar(index.selRows()); index.visualEnd(); break
                 case Qt.Key_S: { const sel = index.selIds(); index.visualEnd(); Backend.summarizeSelection(sel); break }
+                // ⇧F: what do these have in common? → candidate filters
+                case Qt.Key_F: { const rows = index.selRows(); index.visualEnd(); rulesModal.showFor(rows); break }
                 case Qt.Key_Escape:
                 case Qt.Key_V:
                 case Qt.Key_Q: index.visualEnd(); break
@@ -694,6 +703,9 @@ FloatingWindow {
                     }
                     break
                 case Qt.Key_I: go(shifted ? "starred" : "inbox"); e.accepted = true; return
+                case Qt.Key_F:
+                    // gf: the Filtered list — everything the rules hid
+                    Backend.selectFiltered(); win.pane = "index"; e.accepted = true; return
                 case Qt.Key_U:
                     // gu: back to the merged inbox (All accounts)
                     Backend.selectUnified(); win.pane = "index"; e.accepted = true; return
@@ -817,6 +829,13 @@ FloatingWindow {
                 if (e.modifiers & Qt.ShiftModifier) {
                     if (inConv) conv.toEnd(); else index.toEnd()
                 } else win.arm("g")
+                break
+            case Qt.Key_Z:
+                if (!inConv) rulesModal.showAll()
+                break
+            case Qt.Key_M:
+                // m: start a filter from this message's sender
+                if (!inConv && index.current()) rulesModal.showFor([index.current()])
                 break
             case Qt.Key_X:
                 if (!inConv) Backend.toggleStar(index.current())

@@ -9,3 +9,4 @@ EventModal EventModal.qml
 CheatSheet CheatSheet.qml
 SummaryModal SummaryModal.qml
 SummarizeSetup SummarizeSetup.qml
+RulesModal RulesModal.qml

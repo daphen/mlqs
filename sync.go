@@ -71,7 +71,18 @@ func (d *daemon) syncOnce(account string, p provider.Provider) {
 				d.broadcast(map[string]any{"type": "convRemoved", "account": account, "id": id})
 				return
 			}
+			// Cache the unfiltered truth first — the Filtered view and un-hiding a
+			// rule both read it back from here.
 			d.db.UpsertConversations(account, []provider.Conversation{conv})
+			if d.hidden(d.ruleSnapshot(), conv) {
+				// Reuse the removal channel: a conversation that now matches a rule
+				// disappears from any open list, including one already on screen. The
+				// UI's existing handler removes the row, cleans the merged map and
+				// closes it if open — so hiding works live with no UI change.
+				d.broadcast(map[string]any{"type": "convRemoved", "account": account, "id": conv.ID})
+				d.markHiddenRead(account, []provider.Conversation{conv})
+				return
+			}
 			d.broadcast(map[string]any{"type": "convUpdated", "account": account, "conv": conv})
 			d.maybeNotify(account, conv)
 		}(id)
@@ -90,6 +101,13 @@ func (d *daemon) syncOnce(account string, p provider.Provider) {
 // maybeNotify fires a desktop notification for fresh unread inbox mail.
 // Keyed on the conv's latest date so label-only changes don't re-notify.
 func (d *daemon) maybeNotify(account string, c provider.Conversation) {
+	// Filter rules first, and BEFORE the d.notified bookkeeping below: skipping
+	// after it would burn this thread's dedup slot, so removing the rule later
+	// could never let it notify again.
+	if rules := d.ruleSnapshot(); d.hidden(rules, c) {
+		debuglog.Sync("notify skip %s/%s: filtered", account, c.ID)
+		return
+	}
 	if !c.Unread || time.Since(c.Date) > 15*time.Minute {
 		debuglog.Sync("notify skip %s/%s: unread=%v age=%s", account, c.ID, c.Unread, time.Since(c.Date))
 		return

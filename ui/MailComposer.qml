@@ -31,6 +31,22 @@ Rectangle {
         if (Backend.accountFilter !== "") return Backend.accountFilter
         return (Backend.workspaces[0] || ({})).id || Backend.currentAccount
     }
+    // The identity a reply or forward leaves from: the address the mail was
+    // ADDRESSED to, matched against my accounts. A thread can arrive in one
+    // mailbox while being addressed to another (a forward, an alias, a list), and
+    // answering from the wrong address breaks the conversation for the recipient.
+    // To before Cc, since that's the sender's own ordering; falls back to the
+    // mailbox it arrived in.
+    function _fromForMessage(m) {
+        const recips = ((m && m.to) || []).concat((m && m.cc) || [])
+        for (const a of recips) {
+            const e = (a.email || "").toLowerCase()
+            if (e === "") continue
+            const w = Backend.workspaces.find(x => (x.email || "").toLowerCase() === e)
+            if (w) return w.id
+        }
+        return Backend.openConvAccount || _defaultFrom()
+    }
     function cycleFrom() {
         const ids = Backend.workspaces.map(w => w.id)
         if (ids.length < 2) return
@@ -99,7 +115,7 @@ Rectangle {
     // forward a message: daemon quotes the original + re-attaches its files
     function forward(m) {
         if (!m || !m.id) return
-        fromAccount = Backend.openConvAccount || _defaultFrom()   // a forward leaves from the mailbox that received it
+        fromAccount = _fromForMessage(m)
         mode = "forward"; replyToId = ""; forwardId = m.id
         convId = Backend.openConvId; paths = []
         toField.text = ""; ccField.text = ""; bodyArea.text = ""
@@ -116,18 +132,18 @@ Rectangle {
     // reply to the newest message; all=true adds every recipient minus self.
     // Reply-To wins over From (RFC 5322) — list servers depend on it.
     function reply(all) {
-        fromAccount = Backend.openConvAccount || _defaultFrom()   // a reply must leave from the mailbox the thread arrived in
         const msgs = Backend.messages
         if (msgs.length === 0) return
         const m = msgs[msgs.length - 1]
+        fromAccount = _fromForMessage(m)
         mode = "reply"; replyToId = m.id; convId = Backend.openConvId; forwardId = ""; paths = []
         const sender = (m.replyTo && m.replyTo.length) ? m.replyTo : (m.from ? [m.from] : [])
         toField.text = [...new Set(sender.map(a => a.email).filter(e => e))].join(", ")
         let cc = []
         if (all) {
-            // self = the replied-to conversation's mailbox, so reply-all doesn't
-            // add my own address on a thread that belongs to the other account
-            const self = (Backend.workspaces.find(w => w.id === (Backend.openConvAccount || Backend.currentAccount)) || {}).email || ""
+            // self = the address we're sending AS, so reply-all never Ccs the
+            // very identity in the From row
+            const self = comp.fromEmail
             const senderSet = sender.map(a => a.email)
             const rest = (m.to || []).concat(m.cc || [])
                 .map(a => a.email).filter(e => e && e !== self && senderSet.indexOf(e) < 0)

@@ -162,6 +162,11 @@ Rectangle {
             required property string dateStr
             required property bool unread
             required property bool starred
+            // declaring ANY required property turns off implicit model-role
+            // injection, so every role the delegate reads must be listed here —
+            // an undeclared one is silently undefined, which is how the merged
+            // list's account chip rendered as an empty (invisible) string
+            required property string account
             width: list.width; height: 64
             readonly property bool cursor: index === list.currentIndex
             readonly property bool sel: idx.inSel(index)

@@ -501,6 +501,10 @@ FloatingWindow {
                 Backend.cycleAccount(e.key === Qt.Key_L ? 1 : -1)
                 e.accepted = true; return
             }
+            // ⌃r: refresh the current view (⇧r now marks the view read)
+            if (ctrl && !(e.modifiers & Qt.ShiftModifier) && e.key === Qt.Key_R) {
+                Backend.refresh(); e.accepted = true; return
+            }
             // ⌃⇧r: manual update check (daemon toasts the result)
             if (ctrl && (e.modifiers & Qt.ShiftModifier) && e.key === Qt.Key_R) {
                 Backend.checkForUpdates(); e.accepted = true; return
@@ -865,7 +869,9 @@ FloatingWindow {
             case Qt.Key_R:
                 // in a thread: R picks the focused message as reply target
                 if (inConv) conv.replyToFocused()
-                else if (e.modifiers & Qt.ShiftModifier) Backend.refresh()
+                // ⇧R marks everything unread in the current view read (refresh moved
+                // to ⌃r) — scoped to what's on screen, so unfiltered it spans accounts
+                else if (e.modifiers & Qt.ShiftModifier) Backend.markViewRead()
                 else Backend.toggleRead(index.current())
                 break
             case Qt.Key_Slash:

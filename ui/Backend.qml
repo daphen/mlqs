@@ -27,6 +27,35 @@ Singleton {
     property var cursorByAccount: ({})   // account -> next cursor ("" = exhausted)
     property var _pagingAccounts: ({})   // account -> true while a page is in flight
     property var acctError: ({})         // account -> true when its fetch failed
+    // The chosen inbox survives a restart: someone who focused their personal
+    // mailbox should not be dropped back into All accounts on every launch.
+    // Boot is a race — the saved value and the workspaces event arrive in either
+    // order — so whichever lands second applies the view exactly once.
+    property bool _viewLoaded: false
+    property bool _viewApplied: false
+    property string _savedFilter: ""
+    FileView {
+        id: viewStore
+        path: Quickshell.env("HOME") + "/.cache/mlqs/view.json"
+        onLoaded: {
+            try { backend._savedFilter = (JSON.parse(text()) || {}).filter || "" } catch (e) { }
+            backend._viewLoaded = true
+            backend._applyBootView()
+        }
+        onLoadFailed: { backend._viewLoaded = true; backend._applyBootView() }   // first run: no file yet
+    }
+    function _saveView() {
+        viewStore.setText(JSON.stringify({ filter: accountFilter }))
+    }
+    function _applyBootView() {
+        if (_viewApplied || !_viewLoaded || workspaces.length === 0) return
+        _viewApplied = true
+        // an account that no longer exists falls back to the merged inbox
+        const known = workspaces.some(w => w.id === _savedFilter)
+        if (_savedFilter !== "" && known) selectAccount(_savedFilter)
+        else selectUnified()
+    }
+
     function _inboxIdFor(acct) {
         const f = (foldersByAccount[acct] || []).find(f => f.role === "inbox")
         return f ? f.id : ""
@@ -176,6 +205,23 @@ Singleton {
         }
     }
 
+    // ⇧R: mark every unread conversation in the view read. Scoped to what is on
+    // screen, so unfiltered it spans all accounts and filtered it is just that one.
+    // Routes per row, so each markread reaches its owning mailbox.
+    function markViewRead() {
+        const rows = []
+        for (let i = 0; i < convsModel.count; i++) {
+            const r = convsModel.get(i)
+            if (r.unread) rows.push({ tid: r.tid, account: r.account })
+        }
+        if (rows.length === 0) { toast("nothing unread here"); return }
+        for (const r of rows) {
+            send({ type: "markread", account: r.account || currentAccount, id: r.tid, text: "true" })
+            setLocalRead(r.tid, true, r.account)
+        }
+        toast("marked " + rows.length + " read")
+    }
+
     // Safety net: if the daemon never replies (hung provider), drop the spinner.
     Timer {
         id: summaryTimeout; interval: 210000; repeat: false
@@ -222,6 +268,7 @@ Singleton {
 
     function selectAccount(id) {
         accountFilter = id
+        _saveView()
         currentAccount = id
         // keep the stale folder list rendered until the new one lands —
         // blanking it collapses the sidebar for a frame (the account-switch jump)
@@ -238,6 +285,7 @@ Singleton {
     // off their fetch when it arrives, so a cold start fills in as replies come.
     function selectUnified() {
         accountFilter = ""
+        _saveView()
         currentFolderId = "__all"; currentFolderName = "All accounts"
         openConvId = ""; messages = []
         convsModel.clear()
@@ -753,8 +801,8 @@ Singleton {
             // every account's folders, both for the badges and to resolve each
             // inbox id for the merged fetch
             for (const w of workspaces) send({ type: "folders", account: w.id })
-            // the resting view is the merged inbox, not one account's
-            if (first && currentFolderId === "") selectUnified()
+            // restore the last chosen inbox (merged or a single account)
+            if (first && currentFolderId === "") _applyBootView()
         } else if (e.type === "folders") {
             // track every account's inbox count for the tab badges
             const inboxF = (e.folders || []).find(f => f.role === "inbox")

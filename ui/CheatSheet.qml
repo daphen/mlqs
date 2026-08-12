@@ -37,7 +37,7 @@ Modal {
             [["↵"], "Open conversation"], [["l"], "Open / focus index"],
             [["h"], "Focus sidebar"], [["g", "g"], "Jump to top"], [["⇧g"], "Jump to bottom"],
             [["x"], "Star"], [["e"], "Archive"], [["d", "d"], "Trash"], [["u"], "Undo last remove"],
-            [["v"], "Visual select"], [["r"], "Toggle read"], [["⇧r"], "Refresh"],
+            [["v"], "Visual select"], [["r"], "Toggle read"], [["⇧r"], "Mark all read (this view)"],
             [["⇧u"], "Apply update (when available)"],
             [["s"], "Summarize inbox (AI)"],
             [["n"], "Compose"], [["/"], "Search"], [["q"], "Hide window"],
@@ -94,7 +94,7 @@ Modal {
             [["⌃d", "⌃u"], "Half-page down / up"], [["⌃h", "⌃l"], "Sidebar / index"],
             [["gu"], "All accounts (merged inbox)"],
             [["⌃s"], "Account filter (All / one, j/k, ↵)"], [["⌃⇧h", "⌃⇧l"], "Cycle All / accounts"],
-            [["⌃⇧r"], "Check for updates"], [["?"], "This cheat sheet"],
+            [["⌃r"], "Refresh"], [["⌃⇧r"], "Check for updates"], [["?"], "This cheat sheet"],
         ]},
         { title: "Insert", rows: [
             [["⌃↵"], "Send"], [["⌃o"], "Attach clipboard path"], [["esc"], "Discard / exit"],

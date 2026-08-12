@@ -135,6 +135,26 @@ Singleton {
         send({ type: "rulesuggest", items: items })
     }
 
+    // ListModel rows (convsModel.get(i)) are transient ModelObjects: reading their
+    // properties inside a BINDING makes QML capture a dependency on them, and the
+    // notifier dangles the moment the model changes — a segfault, not a warning.
+    // Everything below therefore works on plain JS copies, taken imperatively.
+    function plainRow(r) {
+        return r ? { tid: r.tid, account: r.account, subject: r.subject || "",
+                     senderEmail: r.senderEmail || "", senderName: r.senderName || "",
+                     who: r.who || "", unread: !!r.unread } : null
+    }
+    function plainRows(rows) {
+        const out = []
+        for (const r of (rows || [])) { const p = plainRow(r); if (p) out.push(p) }
+        return out
+    }
+    function visibleRows() {
+        const out = []
+        for (let i = 0; i < convsModel.count; i++) out.push(plainRow(convsModel.get(i)))
+        return out
+    }
+
     // Deterministic "common denominator": whatever every selected row shares.
     // This is what makes the GitHub case work without a model — the shared address
     // and the shared name are both exact, and the pair is the tight rule.
@@ -157,7 +177,9 @@ Singleton {
 
     // How much would this candidate hide? Answered locally and instantly: that is
     // the difference between hiding one bot and hiding all of GitHub.
-    function candidateReach(c, rows) {
+    // Pure over plain arrays — never called from a binding, and never touches the
+    // ListModel (see plainRow above).
+    function candidateReach(c, rows, view) {
         const m = r => {
             if (!c.senderEmail && !c.senderName && !c.subject) return false
             const f = (want, got) => !want || (c.exact
@@ -168,8 +190,17 @@ Singleton {
         let inSel = 0
         for (const r of (rows || [])) if (m(r)) inSel++
         let inView = 0
-        for (let i = 0; i < convsModel.count; i++) if (m(convsModel.get(i))) inView++
+        for (const r of (view || [])) if (m(r)) inView++
         return { sel: inSel, selTotal: (rows || []).length, view: inView }
+    }
+
+    // Attach reach to each candidate ONCE, imperatively, so the delegate reads a
+    // plain value instead of re-evaluating a binding against the live model.
+    function withReach(cands, rows) {
+        const view = visibleRows()
+        const out = []
+        for (const c of (cands || [])) out.push(Object.assign({}, c, { reach: candidateReach(c, rows, view) }))
+        return out
     }
 
     // inbox unread per account (tab badges for the non-active accounts)

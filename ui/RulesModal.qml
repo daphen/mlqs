@@ -31,8 +31,11 @@ Modal {
     readonly property int navCount: nCand + nRule + 1
 
     function showFor(rows) {
-        seedRows = rows || []
-        candidates = Backend.localCandidates(seedRows)
+        // plain copies: these come from a ListModel, and holding the row objects
+        // would let a binding capture a dependency on them (a segfault when the
+        // model changes, not a warning)
+        seedRows = Backend.plainRows(rows)
+        candidates = Backend.withReach(Backend.localCandidates(seedRows), seedRows)
         note = ""
         sel = 0
         show()
@@ -50,7 +53,7 @@ Modal {
             const out = []
             for (const c of rm.candidates) { seen[key(c)] = true; out.push(c) }
             for (const c of (cands || [])) if (!seen[key(c)]) out.push(c)
-            rm.candidates = out
+            rm.candidates = Backend.withReach(out, rm.seedRows)
             rm.note = n || ""
         }
     }
@@ -158,7 +161,7 @@ Modal {
                     }
                     // blast radius, computed locally and instantly
                     Text {
-                        readonly property var reach: Backend.candidateReach(modelData, rm.seedRows)
+                        readonly property var reach: modelData.reach || ({ sel: 0, selTotal: 0, view: 0 })
                         anchors.right: parent.right; anchors.rightMargin: 12
                         anchors.verticalCenter: parent.verticalCenter
                         text: reach.sel + "/" + reach.selTotal + " selected  ·  hides " + reach.view + " in view"

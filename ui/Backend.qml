@@ -19,6 +19,14 @@ Singleton {
     // gives you its Sent/Starred/Trash): "" = all accounts.
     property string accountFilter: ""
     readonly property bool unified: currentFolderId === "__all"
+    readonly property bool threadsView: currentFolderId === "__threads"
+    // Any view whose rows can come from more than one mailbox: the merged inbox,
+    // Filtered, or Threads with no account filter. Here a row's identity is
+    // (account, tid) — a tid alone collides across accounts, and acting on the
+    // collision archives/stars the wrong mailbox's row — and rows carry an account
+    // chip. Distinct from `unified`, which means the merged INBOX specifically.
+    readonly property bool merged: accountFilter === ""
+                                   && (unified || filteredView || threadsView)
     // every account's folder list, not just the current one — each provider names
     // its inbox differently (Gmail "INBOX", IMAP "INBOX", Graph an opaque id), so
     // the merged fetch has to look the id up per account
@@ -214,13 +222,22 @@ Singleton {
 
     // All → each account → All. "" (all) is a first-class stop in the cycle, so
     // ⌃⇧L/H walks the same list the ⌃S dropdown shows.
+    // Changing the SCOPE keeps the view you're in: from Threads you get that
+    // account's threads, not its inbox. A folder jump (gu, the sidebar's All row)
+    // is a different intent and still lands on the merged inbox.
+    function setFilter(id) {
+        const keep = threadsView
+        if (id === "") selectUnified(); else selectAccount(id)
+        if (keep) selectThreads()
+    }
+
     function cycleAccount(d) {
         if (workspaces.length < 1) return
         const ids = [""].concat(workspaces.map(w => w.id))
         const n = ids.length
         const i = ids.indexOf(accountFilter)
         const next = ids[((i < 0 ? 0 : i) + (d || 1) + n) % n]
-        if (next === "") selectUnified(); else selectAccount(next)
+        setFilter(next)
     }
 
     function safeWrite(s) { if (sock && sock.connected) sock.write(s) }
@@ -401,14 +418,17 @@ Singleton {
         send({ type: "conversations", account: acct, folder: inbox })
     }
 
-    // Merge every account's inbox into one list: unread block first (the ordering
-    // invariant the list and convUpdated reinsertion both rely on), date-desc
-    // within each block.
-    function _rebuildUnified() {
+    // Merge every account's rows into one list. The inbox and Filtered put the
+    // unread block first (the ordering invariant convUpdated's reinsertion relies
+    // on), date-desc within each block; Threads is a chronology, so it sorts on date
+    // alone — safe because convUpdated bails out in that view.
+    function _rebuildMerged() {
         const all = []
         for (const acct in _convsByAccount)
             for (const c of _convsByAccount[acct]) all.push(toRow(c, acct))
-        all.sort((a, b) => (a.unread === b.unread) ? (b.dateMs - a.dateMs) : (a.unread ? -1 : 1))
+        all.sort(threadsView
+            ? ((a, b) => b.dateMs - a.dateMs)
+            : ((a, b) => (a.unread === b.unread) ? (b.dateMs - a.dateMs) : (a.unread ? -1 : 1)))
         convsModel.clear()
         const seen = {}
         for (const r of all) {
@@ -441,12 +461,17 @@ Singleton {
         for (const a of accts) send({ type: "filtered", account: a })
     }
 
+    // Threads follows the account scope, same fan-out as Filtered: every mailbox
+    // when unfiltered, one when filtered. Each account answers separately and the
+    // rebuild merges them.
     function selectThreads() {
         currentFolderId = "__threads"; currentFolderName = "Threads"
         convsModel.clear(); nextCursor = ""; pendingCursor = ""
         openConvId = ""; messages = []
+        _convsByAccount = {}
         loadingConvs = true
-        send({ type: "threads", account: currentAccount })
+        const accts = accountFilter === "" ? workspaces.map(w => w.id) : [accountFilter]
+        for (const a of accts) send({ type: "threads", account: a })
     }
 
     // _loadFolder switches the index WITHOUT touching an open conversation —
@@ -528,7 +553,7 @@ Singleton {
         const k = rowKey(a, id)
         if (read) readGrace[k] = Date.now()
         else delete readGrace[k]
-        const i = findRow(id, unified ? a : undefined)
+        const i = findRow(id, merged ? a : undefined)
         if (i >= 0) convsModel.setProperty(i, "unread", !read)
         if (unified) _bumpUnread(a, read ? -1 : 1)
         else folders = folders.map(f => f.id === currentFolderId
@@ -551,7 +576,7 @@ Singleton {
         const acct = row.account || currentAccount
         const v = !row.starred
         send({ type: "star", account: acct, id: row.tid, text: v ? "true" : "false" })
-        const i = findRow(row.tid, unified ? acct : undefined)
+        const i = findRow(row.tid, merged ? acct : undefined)
         if (i >= 0) convsModel.setProperty(i, "starred", v)
     }
 
@@ -573,7 +598,7 @@ Singleton {
         const items = []
         for (const r of rows || []) {
             if (!r || !r.tid) continue
-            const i = findRow(r.tid, unified ? (r.account || currentAccount) : undefined)
+            const i = findRow(r.tid, merged ? (r.account || currentAccount) : undefined)
             if (i >= 0) items.push(_snapRow(i))
         }
         if (items.length === 0) return 0
@@ -619,7 +644,7 @@ Singleton {
             if (!!r.starred === star) continue
             const acct = r.account || currentAccount
             send({ type: "star", account: acct, id: r.tid, text: star ? "true" : "false" })
-            const i = findRow(r.tid, unified ? acct : undefined)
+            const i = findRow(r.tid, merged ? acct : undefined)
             if (i >= 0) convsModel.setProperty(i, "starred", star)
         }
         toast(star ? "starred" : "unstarred")
@@ -637,7 +662,7 @@ Singleton {
             send({ type: verb, account: acct, id: it.row.tid })
             // re-render only where the row belongs: the merged list takes every
             // account back, a filtered one only its own
-            const visible = lr.folderId === currentFolderId && (unified || acct === currentAccount)
+            const visible = lr.folderId === currentFolderId && (merged || acct === currentAccount)
             if (visible) {
                 convsModel.insert(Math.min(it.idx, convsModel.count), it.row)
                 if (it.row.unread) {
@@ -652,7 +677,7 @@ Singleton {
 
     function removeLocal(id, acct) {
         const a = acct || currentAccount
-        const i = findRow(id, unified ? a : undefined)
+        const i = findRow(id, merged ? a : undefined)
         if (i >= 0) {
             if (convsModel.get(i).unread) {
                 if (unified) _bumpUnread(a, -1)
@@ -952,6 +977,18 @@ Singleton {
                 if (inbox) _loadFolder(inbox.id, inbox.name)
             }
         } else if (e.type === "conversations") {
+            if (threadsView && (e.folder || "") === "__threads") {
+                // one frame per account in scope; key it and re-merge, so a slow
+                // mailbox fills in rather than replacing what already landed
+                const tacct = e.account || ""
+                if (tacct === "") return
+                const tm = Object.assign({}, _convsByAccount)
+                tm[tacct] = e.items || []
+                _convsByAccount = tm
+                loadingConvs = false
+                _rebuildMerged()
+                return
+            }
             if (unified) {
                 // merged inbox: accept every account's inbox frame, keyed per
                 // account, then re-merge. Other folders' frames are ignored.
@@ -964,7 +1001,7 @@ Singleton {
                         const cm = Object.assign({}, _convsByAccount)
                         cm[acct] = e.items || []
                         _convsByAccount = cm
-                        _rebuildUnified()
+                        _rebuildMerged()
                     }
                     return
                 }
@@ -976,7 +1013,7 @@ Singleton {
                 _convsByAccount = cm2
                 const km = Object.assign({}, cursorByAccount); km[acct] = e.next || ""; cursorByAccount = km
                 if (paging) { const pm = Object.assign({}, _pagingAccounts); delete pm[acct]; _pagingAccounts = pm }
-                _rebuildUnified()
+                _rebuildMerged()
                 return
             }
             if (e.account !== currentAccount) return
@@ -1048,11 +1085,11 @@ Singleton {
                 convsModel.insert(pos, row)
             }
         } else if (e.type === "convRemoved") {
-            if (!unified && e.account !== currentAccount) return
+            if (!merged && e.account !== currentAccount) return
             const acct = e.account || currentAccount
-            const i = findRow(e.id, unified ? acct : undefined)
+            const i = findRow(e.id, merged ? acct : undefined)
             if (i >= 0) convsModel.remove(i)
-            if (unified && _convsByAccount[acct]) {
+            if (merged && _convsByAccount[acct]) {
                 const m = Object.assign({}, _convsByAccount)
                 m[acct] = m[acct].filter(c => c.id !== e.id)
                 _convsByAccount = m
@@ -1064,7 +1101,7 @@ Singleton {
             // unread — a notification always is, so mark-read fires after the
             // fetch; an external link to an already-read thread must NOT fire it,
             // or the folder badge drifts below the real count.
-            if (!unified && e.account !== currentAccount) selectAccount(e.account)
+            if (!merged && e.account !== currentAccount) selectAccount(e.account)
             openConv({ tid: e.id, account: e.account, subject: e.subject || "", unread: e.unread === true })
         } else if (e.type === "rules") {
             rules = e.rules || []
@@ -1076,11 +1113,11 @@ Singleton {
             const m = Object.assign({}, _convsByAccount); m[acct] = e.items || []; _convsByAccount = m
             loadingConvs = false
             // reuse the merged-inbox rebuild: same shape, one list across accounts
-            _rebuildUnified()
+            _rebuildMerged()
         } else if (e.type === "contacts") {
             contactsResult(e.items || [], e.query || "")
         } else if (e.type === "readmarked") {
-            if (unified || e.account === currentAccount) setLocalRead(e.id, true, e.account)
+            if (merged || e.account === currentAccount) setLocalRead(e.id, true, e.account)
         } else if (e.type === "sent") {
             // resolve the optimistic echo's sending state
             messages = messages.map(m => m.sending ? Object.assign({}, m, { sending: false }) : m)
@@ -1106,10 +1143,11 @@ Singleton {
         } else if (e.type === "resync") {
             // daemon detected wake from suspend: refresh what's on screen
             if (unified) selectUnified()
+            else if (threadsView) selectThreads()
             else if (currentAccount !== "") {
                 send({ type: "folders", account: currentAccount })
                 if (currentFolderId === "__calendar") refreshAgenda()
-                else if (currentFolderId !== "" && currentFolderId !== "__threads")
+                else if (currentFolderId !== "")
                     send({ type: "conversations", account: currentAccount, folder: currentFolderId })
             }
             if (openConvId !== "")
@@ -1121,11 +1159,11 @@ Singleton {
         } else if (e.type === "toast") {
             // merged view: a provider failing (bad host, dead auth) toasts per
             // account — mark it and keep whatever else arrived, and stop waiting
-            if (unified && e.account && _convsByAccount[e.account] === undefined) {
+            if (merged && e.account && _convsByAccount[e.account] === undefined) {
                 const em2 = Object.assign({}, acctError); em2[e.account] = true; acctError = em2
                 const cm3 = Object.assign({}, _convsByAccount); cm3[e.account] = []; _convsByAccount = cm3
                 loadingConvs = false
-                _rebuildUnified()
+                _rebuildMerged()
             }
             if ((e.text || "").indexOf("mlqs send") === 0)
                 messages = messages.map(m => m.sending ? Object.assign({}, m, { sending: false, failed: true }) : m)
@@ -1176,10 +1214,11 @@ Singleton {
                 if (!connected) return
                 // daemon re-sends workspaces on connect; refresh the open view too
                 if (backend.unified) backend.selectUnified()
+                else if (backend.threadsView) backend.selectThreads()
                 else if (backend.currentAccount !== "") {
                     backend.send({ type: "folders", account: backend.currentAccount })
                     if (backend.currentFolderId === "__calendar") backend.refreshAgenda()
-                    else if (backend.currentFolderId !== "" && backend.currentFolderId !== "__threads")
+                    else if (backend.currentFolderId !== "")
                         backend.send({ type: "conversations", account: backend.currentAccount, folder: backend.currentFolderId })
                 }
                 // an open conversation's fetch died with the old daemon —

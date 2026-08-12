@@ -137,7 +137,7 @@ FloatingWindow {
             label: w.name,
             badge: Backend.accountUnread[w.id] || 0
         })))
-        onActivated: id => id === "" ? Backend.selectUnified() : Backend.selectAccount(id)
+        onActivated: id => Backend.setFilter(id)
     }
 
     MailComposer {

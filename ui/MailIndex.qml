@@ -98,29 +98,48 @@ Rectangle {
                 placeholderText: "search…"
                 placeholderTextColor: Theme.fg_muted
                 font.family: Theme.fontFamily; font.pixelSize: 12
+                // Esc LEAVES the search — empties the box and puts back the view the
+                // search interrupted. Blanking the field alone used to leave the
+                // results and the "search: …" title on screen with no way back.
                 Keys.onPressed: e => {
-                    if (e.key === Qt.Key_Escape) { text = ""; idx.searchDone(); e.accepted = true }
-                    else if (e.key === Qt.Key_Return || e.key === Qt.Key_Enter) {
+                    if (e.key === Qt.Key_Escape) {
+                        text = ""; Backend.exitSearch(); idx.searchDone(); e.accepted = true
+                    } else if (e.key === Qt.Key_Return || e.key === Qt.Key_Enter) {
                         if (text.trim() !== "") Backend.runSearch(text.trim())
+                        else Backend.exitSearch()          // ↵ on an emptied box also exits
                         idx.searchDone(); e.accepted = true
                     }
                 }
             }
-            // the family keycap for the / bind, right-aligned in the pill
+            // Right side of the pill: the `/` keycap when idle, and while a search is
+            // active an esc cap that says how to get out (and clears on click) —
+            // otherwise leaving is invisible until you already know the bind.
             Rectangle {
-                visible: !sInput.activeFocus
+                readonly property bool clearable: Backend.searchView
+                visible: clearable || !sInput.activeFocus
                 anchors.right: parent.right; anchors.rightMargin: 9
                 anchors.verticalCenter: parent.verticalCenter
-                width: 20; height: 20; radius: 6
+                width: clearable ? 30 : 20; height: 20; radius: 6
                 color: Theme.mode === "light" ? Theme.bg : Theme.surface2
-                border.width: 1; border.color: Theme.hairline
+                border.width: 1
+                border.color: clearable ? Theme.fg_muted : Theme.hairline
                 Text {
                     anchors.centerIn: parent
-                    text: "/"
+                    text: parent.clearable ? "esc" : "/"
                     color: Theme.fg
                     font.family: Theme.fontFamily; font.pixelSize: 11; font.weight: 500
                 }
+                TapHandler {
+                    enabled: parent.clearable
+                    onTapped: { sInput.text = ""; Backend.exitSearch(); idx.searchDone() }
+                }
             }
+        }
+        // leaving a search any other way (⇧I, a folder jump) must not strand the
+        // query in the box — the pill would claim a search that isn't running
+        Connections {
+            target: Backend
+            function onSearchViewChanged() { if (!Backend.searchView) sInput.text = "" }
         }
     }
 

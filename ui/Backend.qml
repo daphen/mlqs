@@ -20,13 +20,14 @@ Singleton {
     property string accountFilter: ""
     readonly property bool unified: currentFolderId === "__all"
     readonly property bool threadsView: currentFolderId === "__threads"
+    readonly property bool searchView: currentFolderId === "__search"
     // Any view whose rows can come from more than one mailbox: the merged inbox,
-    // Filtered, or Threads with no account filter. Here a row's identity is
+    // Filtered, Threads or search results with no account filter. Here identity is
     // (account, tid) — a tid alone collides across accounts, and acting on the
     // collision archives/stars the wrong mailbox's row — and rows carry an account
     // chip. Distinct from `unified`, which means the merged INBOX specifically.
     readonly property bool merged: accountFilter === ""
-                                   && (unified || filteredView || threadsView)
+                                   && (unified || filteredView || threadsView || searchView)
     // every account's folder list, not just the current one — each provider names
     // its inbox differently (Gmail "INBOX", IMAP "INBOX", Graph an opaque id), so
     // the merged fetch has to look the id up per account
@@ -420,13 +421,13 @@ Singleton {
 
     // Merge every account's rows into one list. The inbox and Filtered put the
     // unread block first (the ordering invariant convUpdated's reinsertion relies
-    // on), date-desc within each block; Threads is a chronology, so it sorts on date
-    // alone — safe because convUpdated bails out in that view.
+    // on), date-desc within each block; Threads and search results are chronologies,
+    // so they sort on date alone — safe because convUpdated bails out in both.
     function _rebuildMerged() {
         const all = []
         for (const acct in _convsByAccount)
             for (const c of _convsByAccount[acct]) all.push(toRow(c, acct))
-        all.sort(threadsView
+        all.sort((threadsView || searchView)
             ? ((a, b) => b.dateMs - a.dateMs)
             : ((a, b) => (a.unread === b.unread) ? (b.dateMs - a.dateMs) : (a.unread ? -1 : 1)))
         convsModel.clear()
@@ -491,6 +492,10 @@ Singleton {
     }
 
     function loadMore() {
+        // Threads and search results are whole answers, not pages: provider.Search
+        // takes no cursor, so there is nothing to ask for. Firing the folder request
+        // below with their sentinel id is what used to garble a long result list.
+        if (threadsView || searchView) return
         if (unified) {
             // page every account that still has mail; each keeps its own cursor
             // (three unrelated formats server-side, so they can't be combined)
@@ -707,6 +712,7 @@ Singleton {
 
     function refresh() {
         if (unified) { selectUnified(); return }
+        if (searchView) { runSearch(searchQuery); return }   // re-run it; keeps _preSearch*
         if (currentFolderId !== "") selectFolder(currentFolderId, currentFolderName)
     }
 
@@ -884,13 +890,37 @@ Singleton {
     property var accountCalendars: []
     function requestCalendars() { send({ type: "calendars", account: currentAccount }) }
 
+    // The view a search interrupted, so Esc can put it back. Captured once: running a
+    // second search from within a result list must still return to where you started.
+    property string searchQuery: ""
+    property string _preSearchId: ""
+    property string _preSearchName: ""
+
+    // Search follows the account scope, same fan-out as Threads. It is a real view
+    // (`__search`), not the empty id that also means "nothing loaded yet" — refresh
+    // and paging both key off having an id.
     function runSearch(q) {
         if (!q) return
+        if (!searchView) { _preSearchId = currentFolderId; _preSearchName = currentFolderName }
+        searchQuery = q
+        currentFolderId = "__search"; currentFolderName = "search: " + q
+        openConvId = ""; messages = []
         convsModel.clear(); nextCursor = ""; pendingCursor = ""
-        currentFolderId = ""; currentFolderName = "search: " + q
-        openConvId = ""
+        _convsByAccount = {}
         loadingConvs = true
-        send({ type: "search", account: currentAccount, query: q })
+        const accts = accountFilter === "" ? workspaces.map(w => w.id) : [accountFilter]
+        for (const a of accts) send({ type: "search", account: a, query: q })
+    }
+
+    // Leave the search entirely — results gone, previous view restored. A search
+    // started before anything had loaded falls back to the merged inbox.
+    function exitSearch() {
+        if (!searchView) return
+        const id = _preSearchId, name = _preSearchName
+        searchQuery = ""; _preSearchId = ""; _preSearchName = ""
+        if (id === "" || id === "__all") { selectUnified(); return }
+        if (id === "__calendar") { selectCalendar(); return }
+        selectFolder(id, name)
     }
 
     // "10:16" today, "Jul 9" this year, "2025-11-03" older
@@ -977,6 +1007,21 @@ Singleton {
                 if (inbox) _loadFolder(inbox.id, inbox.name)
             }
         } else if (e.type === "conversations") {
+            if (searchView && (e.folder || "") === "") {
+                // one frame per account in scope; same keyed merge as Threads.
+                // The daemon tags search results with an EMPTY folder (main.go's
+                // "search" case) — the only frame that has one, since a folder fetch
+                // is never issued without an id. The empty view id it used to imply
+                // is what `__search` replaced.
+                const sacct = e.account || ""
+                if (sacct === "") return
+                const sm = Object.assign({}, _convsByAccount)
+                sm[sacct] = e.items || []
+                _convsByAccount = sm
+                loadingConvs = false
+                _rebuildMerged()
+                return
+            }
             if (threadsView && (e.folder || "") === "__threads") {
                 // one frame per account in scope; key it and re-merge, so a slow
                 // mailbox fills in rather than replacing what already landed
@@ -1050,7 +1095,10 @@ Singleton {
         } else if (e.type === "convUpdated") {
             if (!e.conv) return
             if (!unified && e.account !== currentAccount) return
-            if (currentFolderId === "__threads") return
+            // Threads and search results are not folder listings: their rows have no
+            // folder to be "still in", so the inFolder test below would delete every
+            // row a sync tick happens to touch.
+            if (threadsView || searchView) return
             const c = e.conv
             const acct = e.account || currentAccount
             // merged: "in folder" means in THAT account's inbox
@@ -1144,6 +1192,7 @@ Singleton {
             // daemon detected wake from suspend: refresh what's on screen
             if (unified) selectUnified()
             else if (threadsView) selectThreads()
+            else if (searchView) runSearch(searchQuery)
             else if (currentAccount !== "") {
                 send({ type: "folders", account: currentAccount })
                 if (currentFolderId === "__calendar") refreshAgenda()
@@ -1215,6 +1264,7 @@ Singleton {
                 // daemon re-sends workspaces on connect; refresh the open view too
                 if (backend.unified) backend.selectUnified()
                 else if (backend.threadsView) backend.selectThreads()
+                else if (backend.searchView) backend.runSearch(backend.searchQuery)
                 else if (backend.currentAccount !== "") {
                     backend.send({ type: "folders", account: backend.currentAccount })
                     if (backend.currentFolderId === "__calendar") backend.refreshAgenda()

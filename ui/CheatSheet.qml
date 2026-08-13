@@ -40,7 +40,9 @@ Modal {
             [["v"], "Visual select"], [["r"], "Toggle read"], [["⇧r"], "Mark all read (this view)"],
             [["⇧u"], "Apply update (when available)"],
             [["s"], "Summarize inbox (AI)"],
-            [["n"], "Compose"], [["/"], "Search"], [["q"], "Hide window"],
+            [["n"], "Compose"], [["/"], "Search (every account in scope)"],
+            [["esc"], "Leave search · back to the previous view"],
+            [["q"], "Hide window"],
             [["z"], "Filters"], [["m"], "Filter mail like this"],
         ]},
         { title: "Go to", rows: [

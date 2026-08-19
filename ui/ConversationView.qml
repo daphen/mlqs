@@ -1195,6 +1195,25 @@ Rectangle {
                     }
                 }
 
+                Row {
+                    visible: modelData.hasInvite === true && modelData.meeting
+                    spacing: 8
+                    Icon {
+                        width: 14; height: 14
+                        anchors.verticalCenter: parent.verticalCenter
+                        name: "location-2"
+                        color: Theme.fg_muted
+                    }
+                    Text {
+                        anchors.verticalCenter: parent.verticalCenter
+                        text: modelData.meeting && (modelData.meeting.location || "").trim() !== ""
+                            ? modelData.meeting.location : "No location"
+                        color: Theme.fg_muted
+                        font.family: Theme.fontFamily; font.pixelSize: 12
+                        elide: Text.ElideRight
+                    }
+                }
+
                 // attachment chips — only cargo NOT already shown in the body
                 Flow {
                     width: parent.width

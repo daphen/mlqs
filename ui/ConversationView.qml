@@ -25,6 +25,19 @@ Rectangle {
         return (m && m.hasInvite) ? m : null
     }
 
+    function meetingLine(meeting) {
+        if (!meeting || !meeting.start || !meeting.end) return "Invitation"
+        const start = new Date(meeting.start), end = new Date(meeting.end)
+        const mins = Math.max(0, Math.round((end - start) / 60000))
+        const duration = mins >= 60
+            ? Math.floor(mins / 60) + "h" + (mins % 60 ? " " + (mins % 60) + "m" : "")
+            : mins + "m"
+        let line = Qt.formatDate(start, "ddd MMM d") + ", " + Qt.formatTime(start, "hh:mm") + " (" + duration + ")"
+        if (meeting.conflictCount > 0)
+            line += "  ·  " + meeting.conflictCount + " conflict" + (meeting.conflictCount === 1 ? "" : "s")
+        return line
+    }
+
     // vim scrolloff, shared by cursor motions and read-mode hops
     readonly property real scrollMargin: Math.min(120, list.height * 0.25)
 
@@ -1148,7 +1161,7 @@ Rectangle {
                     }
                     Text {
                         anchors.verticalCenter: parent.verticalCenter
-                        text: "Invitation"
+                        text: cv.meetingLine(modelData.meeting)
                         color: Theme.fg_secondary
                         font.family: Theme.fontFamily; font.pixelSize: 12; font.weight: 500
                     }
@@ -1161,6 +1174,8 @@ Rectangle {
                         Rectangle {
                             required property var modelData
                             readonly property string msgId: parent.parent.parent.modelData.id
+                            readonly property string eventId: parent.parent.parent.modelData.meeting
+                                ? parent.parent.parent.modelData.meeting.eventId : ""
                             height: 22; radius: 11
                             width: rsvpLbl.implicitWidth + 22
                             anchors.verticalCenter: parent.verticalCenter
@@ -1175,7 +1190,7 @@ Rectangle {
                                 color: Theme.fg
                                 font.family: Theme.fontFamily; font.pixelSize: 11; font.weight: 500
                             }
-                            TapHandler { onTapped: Backend.rsvpMail(msgId, modelData.status) }
+                            TapHandler { onTapped: Backend.rsvpMail(msgId, modelData.status, eventId) }
                         }
                     }
                 }

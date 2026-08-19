@@ -1214,6 +1214,36 @@ Rectangle {
                     }
                 }
 
+                Rectangle {
+                    visible: modelData.hasInvite === true && modelData.meeting
+                        && (modelData.meeting.eventId || modelData.meeting.iCalUid)
+                    height: 24; radius: 12
+                    width: showCalRow.implicitWidth + 20
+                    color: showCalHov.hovered ? Theme.hover : Theme.surface2
+                    border.width: 1; border.color: Theme.hairline
+                    HoverHandler { id: showCalHov; cursorShape: Qt.PointingHandCursor }
+                    Row {
+                        id: showCalRow
+                        anchors.centerIn: parent
+                        spacing: 6
+                        Icon {
+                            width: 13; height: 13
+                            anchors.verticalCenter: parent.verticalCenter
+                            name: "calendar-days"
+                            color: Theme.fg_muted
+                        }
+                        Text {
+                            anchors.verticalCenter: parent.verticalCenter
+                            text: "Show in calendar"
+                            color: Theme.fg
+                            font.family: Theme.fontFamily; font.pixelSize: 11; font.weight: 500
+                        }
+                    }
+                    TapHandler {
+                        onTapped: Backend.showMeetingInCalendar(modelData.meeting, Backend.openConvAccount)
+                    }
+                }
+
                 // attachment chips — only cargo NOT already shown in the body
                 Flow {
                     width: parent.width

@@ -93,6 +93,7 @@ FloatingWindow {
                 anchors.fill: parent
                 visible: win.calPane && Backend.openConvId === ""
                 active: win.pane === "index"
+                onEventDetailsRequested: event => eventModal.showEvent(event)
             }
             ConversationView {
                 id: conv
@@ -322,12 +323,7 @@ FloatingWindow {
             anchors.verticalCenter: parent.verticalCenter
             spacing: 6
             KeyCap { anchors.verticalCenter: parent.verticalCenter; text: "↵" }
-            CapLabel { anchors.verticalCenter: parent.verticalCenter; text: "join" }
-            CapGap {}
             KeyCap { anchors.verticalCenter: parent.verticalCenter; text: "o" }
-            CapLabel { anchors.verticalCenter: parent.verticalCenter; text: "open" }
-            CapGap {}
-            KeyCap { anchors.verticalCenter: parent.verticalCenter; text: "⌃o" }
             CapLabel { anchors.verticalCenter: parent.verticalCenter; text: "details" }
             CapGap {}
             KeyCap { anchors.verticalCenter: parent.verticalCenter; text: "y" }
@@ -740,7 +736,7 @@ FloatingWindow {
                     break
                 case Qt.Key_Return:
                 case Qt.Key_Enter: calview.open(); break
-                case Qt.Key_O: calview.openBrowser(); break
+                case Qt.Key_O: calview.open(); break
                 case Qt.Key_Y: calview.rsvp("accepted"); break
                 case Qt.Key_M: calview.rsvp("tentative"); break
                 case Qt.Key_N:

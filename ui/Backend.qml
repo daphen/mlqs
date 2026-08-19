@@ -749,12 +749,29 @@ Singleton {
     ListModel { id: eventsModel }
     property bool loadingAgenda: false
     property var _agendaByAccount: ({})
+    property var _calendarTarget: null
+    signal calendarEventTargeted(int index)
 
     function selectCalendar() {
+        _calendarTarget = null
         currentFolderId = "__calendar"; currentFolderName = "Calendar"
         openConvId = ""; messages = []
         calFilter = 0   // fresh entry always shows everything
         refreshAgenda()
+    }
+    function showMeetingInCalendar(meeting, account) {
+        if (!meeting) return
+        // widen the span first so the refresh can actually reach the event —
+        // past the month chip the span goes bespoke (no chip lights up)
+        const start = new Date(meeting.start)
+        const days = Math.ceil((start.getTime() - Date.now()) / 86400000) + 1
+        if (days > agendaDays) agendaDays = days <= 7 ? 7 : days <= 31 ? 31 : days
+        selectCalendar()
+        _calendarTarget = {   // after selectCalendar, which resets it
+            eventId: meeting.eventId || "",
+            iCalUid: meeting.iCalUid || "",
+            account: account || openConvAccount || currentAccount
+        }
     }
     property int agendaDays: 7   // 1 today · 7 week · 31 month
     function setAgendaSpan(days) {
@@ -848,11 +865,23 @@ Singleton {
             else if (!out[seen[k]].myStatus && ev.myStatus) out[seen[k]] = ev
         }
         for (const ev of out) eventsModel.append(toEventRow(ev))
+        if (_calendarTarget) {
+            for (let i = 0; i < eventsModel.count; i++) {
+                const row = eventsModel.get(i)
+                const idMatch = _calendarTarget.eventId !== "" && row.eid === _calendarTarget.eventId
+                const uidMatch = _calendarTarget.iCalUid !== "" && row.iCalUid === _calendarTarget.iCalUid
+                if ((idMatch || uidMatch) && (!_calendarTarget.account || row.account === _calendarTarget.account)) {
+                    _calendarTarget = null
+                    calendarEventTargeted(i)
+                    break
+                }
+            }
+        }
     }
     function toEventRow(ev) {
         const s = new Date(ev.start), e = new Date(ev.end)
         return {
-            eid: ev.id, calId: ev.calId, account: ev.account,
+            eid: ev.id, iCalUid: ev.iCalUid || "", calId: ev.calId, account: ev.account,
             title: ev.title || "(untitled)", location: ev.location || "",
             startMs: s.getTime(), dayKey: dayKey(s),
             timeStr: ev.allDay ? "all day" : Qt.formatTime(s, "hh:mm") + "–" + Qt.formatTime(e, "hh:mm"),

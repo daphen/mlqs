@@ -578,7 +578,8 @@ FloatingWindow {
                 e.accepted = true; return
             }
 
-            // Calendar-invite RSVP: ⇧Y accept · m maybe · n decline. MUST run before
+            // Calendar invite: c shows it in Calendar; ⇧Y accepts, m maybe, n declines.
+            // MUST run before
             // the cursor-mode block, which owns y/⇧Y for yanking and swallows every
             // other key — and an invite is always a single-message conversation, which
             // auto-enters cursor mode, so the copies in the main switch below were
@@ -590,6 +591,10 @@ FloatingWindow {
                 if (inv) {
                     const shifted = e.modifiers & Qt.ShiftModifier
                     const eventId = inv.meeting ? inv.meeting.eventId : ""
+                    if (!shifted && e.key === Qt.Key_C && inv.meeting) {
+                        Backend.showMeetingInCalendar(inv.meeting, Backend.openConvAccount)
+                        e.accepted = true; return
+                    }
                     if (shifted && e.key === Qt.Key_Y) {
                         Backend.rsvpMail(inv.id, "accepted", eventId); e.accepted = true; return
                     }

@@ -1226,6 +1226,10 @@ Rectangle {
                         id: showCalRow
                         anchors.centerIn: parent
                         spacing: 6
+                        KeyCap {
+                            anchors.verticalCenter: parent.verticalCenter
+                            small: true; ghost: true; text: "c"
+                        }
                         Icon {
                             width: 13; height: 13
                             anchors.verticalCenter: parent.verticalCenter

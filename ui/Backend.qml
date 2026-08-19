@@ -784,6 +784,7 @@ Singleton {
         eventsModel.clear()
         loadingAgenda = true
         for (const w of workspaces) {
+            if (w.calendar === false) continue
             send({ type: "agenda", account: w.id, text: String(agendaDays) })
             send({ type: "calendars", account: w.id })   // names for the filter chips
         }

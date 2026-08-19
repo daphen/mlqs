@@ -480,6 +480,7 @@ func (d *daemon) accountsPayload() map[string]any {
 	for _, a := range d.cfg.Accounts {
 		ws = append(ws, map[string]any{
 			"id": a.Name, "name": a.Name, "vendor": a.Vendor, "email": a.Email,
+			"calendar": d.cals[a.Name] != nil,
 		})
 	}
 	return map[string]any{"type": "workspaces", "workspaces": ws}
@@ -1253,7 +1254,9 @@ func (d *daemon) handle(conn net.Conn, cmd command) {
 	case "agenda":
 		cal := d.cals[cmd.Account]
 		if cal == nil {
-			fail(fmt.Errorf("no calendar client (re-run: mlqs auth %s)", cmd.Account))
+			// Plain IMAP accounts intentionally have no calendar. Treat an agenda
+			// refresh as an empty contribution instead of alarming the user.
+			d.sendTo(conn, map[string]any{"type": "agenda", "account": cmd.Account, "events": []provider.CalEvent{}})
 			return
 		}
 		days := 14
@@ -1269,7 +1272,7 @@ func (d *daemon) handle(conn net.Conn, cmd command) {
 	case "calendars":
 		cal := d.cals[cmd.Account]
 		if cal == nil {
-			fail(fmt.Errorf("no calendar client"))
+			d.sendTo(conn, map[string]any{"type": "calendars", "account": cmd.Account, "calendars": []provider.Calendar{}})
 			return
 		}
 		cs, err := cal.Calendars(ctx)

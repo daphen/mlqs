@@ -25,6 +25,19 @@ Rectangle {
         return (m && m.hasInvite) ? m : null
     }
 
+    function meetingLine(meeting) {
+        if (!meeting || !meeting.start || !meeting.end) return "Invitation"
+        const start = new Date(meeting.start), end = new Date(meeting.end)
+        const mins = Math.max(0, Math.round((end - start) / 60000))
+        const duration = mins >= 60
+            ? Math.floor(mins / 60) + "h" + (mins % 60 ? " " + (mins % 60) + "m" : "")
+            : mins + "m"
+        let line = Qt.formatDate(start, "ddd MMM d") + ", " + Qt.formatTime(start, "hh:mm") + " (" + duration + ")"
+        if (meeting.conflictCount > 0)
+            line += "  ·  " + meeting.conflictCount + " conflict" + (meeting.conflictCount === 1 ? "" : "s")
+        return line
+    }
+
     // vim scrolloff, shared by cursor motions and read-mode hops
     readonly property real scrollMargin: Math.min(120, list.height * 0.25)
 
@@ -1148,7 +1161,7 @@ Rectangle {
                     }
                     Text {
                         anchors.verticalCenter: parent.verticalCenter
-                        text: "Invitation"
+                        text: cv.meetingLine(modelData.meeting)
                         color: Theme.fg_secondary
                         font.family: Theme.fontFamily; font.pixelSize: 12; font.weight: 500
                     }
@@ -1161,6 +1174,8 @@ Rectangle {
                         Rectangle {
                             required property var modelData
                             readonly property string msgId: parent.parent.parent.modelData.id
+                            readonly property string eventId: parent.parent.parent.modelData.meeting
+                                ? parent.parent.parent.modelData.meeting.eventId : ""
                             height: 22; radius: 11
                             width: rsvpLbl.implicitWidth + 22
                             anchors.verticalCenter: parent.verticalCenter
@@ -1175,8 +1190,61 @@ Rectangle {
                                 color: Theme.fg
                                 font.family: Theme.fontFamily; font.pixelSize: 11; font.weight: 500
                             }
-                            TapHandler { onTapped: Backend.rsvpMail(msgId, modelData.status) }
+                            TapHandler { onTapped: Backend.rsvpMail(msgId, modelData.status, eventId) }
                         }
+                    }
+                }
+
+                Row {
+                    visible: modelData.hasInvite === true && modelData.meeting
+                    spacing: 8
+                    Icon {
+                        width: 14; height: 14
+                        anchors.verticalCenter: parent.verticalCenter
+                        name: "location-2"
+                        color: Theme.fg_muted
+                    }
+                    Text {
+                        anchors.verticalCenter: parent.verticalCenter
+                        text: modelData.meeting && (modelData.meeting.location || "").trim() !== ""
+                            ? modelData.meeting.location : "No location"
+                        color: Theme.fg_muted
+                        font.family: Theme.fontFamily; font.pixelSize: 12
+                        elide: Text.ElideRight
+                    }
+                }
+
+                Rectangle {
+                    visible: modelData.hasInvite === true && modelData.meeting
+                        && (modelData.meeting.eventId || modelData.meeting.iCalUid)
+                    height: 24; radius: 12
+                    width: showCalRow.implicitWidth + 20
+                    color: showCalHov.hovered ? Theme.hover : Theme.surface2
+                    border.width: 1; border.color: Theme.hairline
+                    HoverHandler { id: showCalHov; cursorShape: Qt.PointingHandCursor }
+                    Row {
+                        id: showCalRow
+                        anchors.centerIn: parent
+                        spacing: 6
+                        KeyCap {
+                            anchors.verticalCenter: parent.verticalCenter
+                            small: true; ghost: true; text: "c"
+                        }
+                        Icon {
+                            width: 13; height: 13
+                            anchors.verticalCenter: parent.verticalCenter
+                            name: "calendar-days"
+                            color: Theme.fg_muted
+                        }
+                        Text {
+                            anchors.verticalCenter: parent.verticalCenter
+                            text: "Show in calendar"
+                            color: Theme.fg
+                            font.family: Theme.fontFamily; font.pixelSize: 11; font.weight: 500
+                        }
+                    }
+                    TapHandler {
+                        onTapped: Backend.showMeetingInCalendar(modelData.meeting, Backend.openConvAccount)
                     }
                 }
 

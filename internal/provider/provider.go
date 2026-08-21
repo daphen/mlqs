@@ -35,6 +35,19 @@ type Attachment struct {
 	ShownInline bool `json:"shownInline"`
 }
 
+type Meeting struct {
+	EventID        string    `json:"eventId"`
+	ICalUID        string    `json:"iCalUid"`
+	Start          time.Time `json:"start"`
+	End            time.Time `json:"end"`
+	Location       string    `json:"location"`
+	Response       string    `json:"response"`
+	ResponseNeeded bool      `json:"responseNeeded"`
+	JoinURL        string    `json:"joinUrl"`
+	Cancelled      bool      `json:"cancelled"`
+	ConflictCount  int       `json:"conflictCount"`
+}
+
 type Message struct {
 	ID     string  `json:"id"`
 	ConvID string  `json:"convId"`
@@ -54,6 +67,7 @@ type Message struct {
 	Unread      bool         `json:"unread"`
 	Starred     bool         `json:"starred"`
 	Attachments []Attachment `json:"attachments"`
+	Meeting     *Meeting     `json:"meeting,omitempty"`
 }
 
 type Conversation struct {

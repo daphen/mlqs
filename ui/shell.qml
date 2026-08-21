@@ -93,6 +93,7 @@ FloatingWindow {
                 anchors.fill: parent
                 visible: win.calPane && Backend.openConvId === ""
                 active: win.pane === "index"
+                onEventDetailsRequested: event => eventModal.showEvent(event)
             }
             ConversationView {
                 id: conv
@@ -322,12 +323,7 @@ FloatingWindow {
             anchors.verticalCenter: parent.verticalCenter
             spacing: 6
             KeyCap { anchors.verticalCenter: parent.verticalCenter; text: "↵" }
-            CapLabel { anchors.verticalCenter: parent.verticalCenter; text: "join" }
-            CapGap {}
             KeyCap { anchors.verticalCenter: parent.verticalCenter; text: "o" }
-            CapLabel { anchors.verticalCenter: parent.verticalCenter; text: "open" }
-            CapGap {}
-            KeyCap { anchors.verticalCenter: parent.verticalCenter; text: "⌃o" }
             CapLabel { anchors.verticalCenter: parent.verticalCenter; text: "details" }
             CapGap {}
             KeyCap { anchors.verticalCenter: parent.verticalCenter; text: "y" }
@@ -582,7 +578,8 @@ FloatingWindow {
                 e.accepted = true; return
             }
 
-            // Calendar-invite RSVP: ⇧Y accept · m maybe · n decline. MUST run before
+            // Calendar invite: c shows it in Calendar; ⇧Y accepts, m maybe, n declines.
+            // MUST run before
             // the cursor-mode block, which owns y/⇧Y for yanking and swallows every
             // other key — and an invite is always a single-message conversation, which
             // auto-enters cursor mode, so the copies in the main switch below were
@@ -593,14 +590,19 @@ FloatingWindow {
                 const inv = conv.inviteMsg()
                 if (inv) {
                     const shifted = e.modifiers & Qt.ShiftModifier
+                    const eventId = inv.meeting ? inv.meeting.eventId : ""
+                    if (!shifted && e.key === Qt.Key_C && inv.meeting) {
+                        Backend.showMeetingInCalendar(inv.meeting, Backend.openConvAccount)
+                        e.accepted = true; return
+                    }
                     if (shifted && e.key === Qt.Key_Y) {
-                        Backend.rsvpMail(inv.id, "accepted"); e.accepted = true; return
+                        Backend.rsvpMail(inv.id, "accepted", eventId); e.accepted = true; return
                     }
                     if (!shifted && e.key === Qt.Key_M) {
-                        Backend.rsvpMail(inv.id, "tentative"); e.accepted = true; return
+                        Backend.rsvpMail(inv.id, "tentative", eventId); e.accepted = true; return
                     }
                     if (!shifted && e.key === Qt.Key_N) {
-                        Backend.rsvpMail(inv.id, "declined"); e.accepted = true; return
+                        Backend.rsvpMail(inv.id, "declined", eventId); e.accepted = true; return
                     }
                 }
             }
@@ -739,7 +741,7 @@ FloatingWindow {
                     break
                 case Qt.Key_Return:
                 case Qt.Key_Enter: calview.open(); break
-                case Qt.Key_O: calview.openBrowser(); break
+                case Qt.Key_O: calview.open(); break
                 case Qt.Key_Y: calview.rsvp("accepted"); break
                 case Qt.Key_M: calview.rsvp("tentative"); break
                 case Qt.Key_N:

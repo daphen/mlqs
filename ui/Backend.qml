@@ -1185,6 +1185,11 @@ Singleton {
             // names arriving after the agenda upgrade the filter-chip labels
             if (currentFolderId === "__calendar") _rebuildAgenda()
         } else if (e.type === "rsvped") {
+            messages = messages.map(m => {
+                if (m.id !== e.id || !m.meeting) return m
+                const meeting = Object.assign({}, m.meeting, { response: e.status || m.meeting.response })
+                return Object.assign({}, m, { meeting: meeting })
+            })
             toast("rsvp saved" + (e.status ? ": " + e.status : ""))
         } else if (e.type === "eventcreated") {
             toast("event created ✓")

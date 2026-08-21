@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"strings"
 	"testing"
+	"time"
 )
 
 type roundTripFunc func(*http.Request) (*http.Response, error)
@@ -17,6 +18,13 @@ func jsonResponse(body string) *http.Response {
 		StatusCode: http.StatusOK,
 		Header:     http.Header{"Content-Type": {"application/json"}},
 		Body:       io.NopCloser(strings.NewReader(body)),
+	}
+}
+
+func TestAPICalTimeParsesPacificWindowsZone(t *testing.T) {
+	got := (apiCalTime{DateTime: "2026-07-01T13:00:00", TimeZone: "Pacific Standard Time"}).parse()
+	if want := "2026-07-01T20:00:00Z"; got.UTC().Format(time.RFC3339) != want {
+		t.Fatalf("parsed time = %s, want %s", got.UTC().Format(time.RFC3339), want)
 	}
 }
 
@@ -40,13 +48,16 @@ func TestGetConversationExpandsEventMessageAndCountsConflicts(t *testing.T) {
 					"@odata.type":"#microsoft.graph.eventMessageRequest",
 					"meetingMessageType":"meetingRequest","responseRequested":true,
 					"event":{"id":"event-1","iCalUId":"invite-uid",
-						"start":{"dateTime":"2026-09-01T13:00:00","timeZone":"Europe/Stockholm"},
-						"end":{"dateTime":"2026-09-01T14:30:00","timeZone":"Europe/Stockholm"},
+						"start":{"dateTime":"2026-09-01T13:00:00","timeZone":"W. Europe Standard Time"},
+						"end":{"dateTime":"2026-09-01T14:30:00","timeZone":"W. Europe Standard Time"},
 						"location":{"displayName":"Room 9"},
 						"responseStatus":{"response":"notResponded"},"showAs":"tentative"
 					}
 				}`), nil
 			case r.URL.Path == "/v1.0/me/calendarView":
+				if got := r.URL.Query().Get("startDateTime"); got != "2026-09-01T11:00:00Z" {
+					t.Fatalf("conflict query start = %q, want Windows-zone time converted to UTC", got)
+				}
 				return jsonResponse(`{"value":[
 					{"id":"conflict-1","iCalUId":"other-uid","showAs":"busy"},
 					{"id":"event-1","iCalUId":"invite-uid","showAs":"tentative"},

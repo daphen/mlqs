@@ -694,10 +694,19 @@ type apiCalTime struct {
 	TimeZone string `json:"timeZone"`
 }
 
+var graphWindowsTimeZones = map[string]string{
+	"Pacific Standard Time":   "America/Los_Angeles",
+	"W. Europe Standard Time": "Europe/Berlin",
+}
+
 func (t apiCalTime) parse() time.Time {
 	loc := time.UTC
-	if t.TimeZone != "" && t.TimeZone != "UTC" {
-		if l, err := time.LoadLocation(t.TimeZone); err == nil {
+	zone := t.TimeZone
+	if iana, ok := graphWindowsTimeZones[zone]; ok {
+		zone = iana
+	}
+	if zone != "" && zone != "UTC" {
+		if l, err := time.LoadLocation(zone); err == nil {
 			loc = l
 		}
 	}

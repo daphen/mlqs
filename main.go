@@ -518,6 +518,7 @@ type command struct {
 	End     string `json:"end"`
 	Meet    bool   `json:"meet"`
 	Forward string `json:"forward"`
+	Event   string `json:"event"` // rsvpmail: the invite's calendar event id, skips the .ics lookup
 }
 
 func (d *daemon) serve(conn net.Conn) {
@@ -1035,7 +1036,7 @@ func (d *daemon) handle(conn net.Conn, cmd command) {
 					atts[i].ShownInline = true
 				}
 			}
-			hasInvite := false
+			hasInvite := m.Meeting != nil
 			for _, a := range m.Attachments {
 				if isICS(a) {
 					hasInvite = true
@@ -1048,6 +1049,7 @@ func (d *daemon) handle(conn net.Conn, cmd command) {
 				"bodyRich":  rich,
 				"hasHtml":   strings.TrimSpace(m.BodyHTML) != "",
 				"hasInvite": hasInvite,
+				"meeting":   m.Meeting,
 			})
 		}
 		d.sendTo(conn, map[string]any{"type": "conversation", "account": cmd.Account,
@@ -1289,11 +1291,19 @@ func (d *daemon) handle(conn net.Conn, cmd command) {
 		}
 		d.sendTo(conn, map[string]any{"type": "rsvped", "account": cmd.Account, "id": cmd.ID, "status": cmd.Text})
 	case "rsvpmail":
-		// ID = message id carrying a text/calendar attachment; the .ics UID
-		// resolves the event on the primary calendar, then a normal RSVP
+		// Graph event messages carry the associated event ID directly.
+		// MIME invitations fall back to resolving an attached .ics UID.
 		cal := d.cals[cmd.Account]
 		if cal == nil {
 			fail(fmt.Errorf("no calendar client"))
+			return
+		}
+		if cmd.Event != "" {
+			if err := cal.RSVP(ctx, "primary", cmd.Event, cmd.Text); err != nil {
+				fail(err)
+				return
+			}
+			d.sendTo(conn, map[string]any{"type": "rsvped", "account": cmd.Account, "id": cmd.ID, "status": cmd.Text})
 			return
 		}
 		msgs, err := p.GetConversation(ctx, cmd.Conv)

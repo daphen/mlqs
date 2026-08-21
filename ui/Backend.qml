@@ -875,8 +875,9 @@ Singleton {
         for (let i = 0; i < eventsModel.count; i++)
             if (eventsModel.get(i).eid === row.eid) eventsModel.setProperty(i, "myStatus", status)
     }
-    function rsvpMail(msgId, status) {
-        send({ type: "rsvpmail", account: openConvAccount || currentAccount, conv: openConvId, id: msgId, text: status })
+    function rsvpMail(msgId, status, eventId) {
+        send({ type: "rsvpmail", account: openConvAccount || currentAccount, conv: openConvId,
+               id: msgId, event: eventId || "", text: status })
         toast("rsvp: " + status + "…")
     }
     function createEvent(d) {

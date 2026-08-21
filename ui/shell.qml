@@ -593,14 +593,15 @@ FloatingWindow {
                 const inv = conv.inviteMsg()
                 if (inv) {
                     const shifted = e.modifiers & Qt.ShiftModifier
+                    const eventId = inv.meeting ? inv.meeting.eventId : ""
                     if (shifted && e.key === Qt.Key_Y) {
-                        Backend.rsvpMail(inv.id, "accepted"); e.accepted = true; return
+                        Backend.rsvpMail(inv.id, "accepted", eventId); e.accepted = true; return
                     }
                     if (!shifted && e.key === Qt.Key_M) {
-                        Backend.rsvpMail(inv.id, "tentative"); e.accepted = true; return
+                        Backend.rsvpMail(inv.id, "tentative", eventId); e.accepted = true; return
                     }
                     if (!shifted && e.key === Qt.Key_N) {
-                        Backend.rsvpMail(inv.id, "declined"); e.accepted = true; return
+                        Backend.rsvpMail(inv.id, "declined", eventId); e.accepted = true; return
                     }
                 }
             }

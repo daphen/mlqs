@@ -18,6 +18,7 @@ Singleton {
     readonly property var palettes: ({
         "light": {
             "bg":          "#FFFFFF",
+            "bg_dim":      "#F5F5F7",
             "bg_alt":      "#F6F7F4",
             "selection":   "#F4F5F2",
             "surface":     "#F7F7F7",
@@ -44,6 +45,7 @@ Singleton {
         },
         "dark": {
             "bg":          "#181818",
+            "bg_dim":      "#0a0a0a",
             "bg_alt":      "#1B1B1B",
             "selection":   "#2E2E2E",
             "surface":     "#1B1B1B",
@@ -71,6 +73,7 @@ Singleton {
     })
 
     readonly property color bg:           palettes[mode].bg
+    readonly property color bgDim:        palettes[mode].bg_dim
     readonly property color bg_alt:       palettes[mode].bg_alt
     readonly property color selection:    palettes[mode].selection
     readonly property color surface:      palettes[mode].surface

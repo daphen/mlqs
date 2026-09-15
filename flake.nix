@@ -33,9 +33,6 @@
           # QsLib resolution: a locally-managed design system (dotfiles) wins;
           # everyone else falls back to the vendored snapshot in the package
           export QML2_IMPORT_PATH="$HOME/.local/share/qml:${daemon}/share/mlqs/ui/vendor''${QML2_IMPORT_PATH:+:$QML2_IMPORT_PATH}"
-          # niri (the mapped-window check below) lives in the system profile, not
-          # this wrapper's runtimeInputs — make it reachable on direct invocation.
-          export PATH="/run/current-system/sw/bin:$PATH"
           sock="$XDG_RUNTIME_DIR/mlqs.sock"
 
           # serialize the daemon aliveness check + spawn: concurrent launches
@@ -97,28 +94,12 @@
           ' 2>/dev/null
           }
 
-          # A real MAPPED window is the only success signal. A
-          # windowless-but-connected UI is exactly the #11 ghost, so trusting
-          # the client count (summon_ok) would report success while nothing
-          # shows. niri is authoritative; off niri, fall back to summon_ok.
-          have_niri=""
-          if command -v niri >/dev/null 2>&1; then have_niri=1; fi
-          confirm() {
-            if [ -n "$have_niri" ]; then
-              niri msg --json windows 2>/dev/null | grep -q '"title": *"mlqs"'
-            else
-              summon_ok
-            fi
-          }
+          # A connected UI handles the summon itself. Window discovery and focus
+          # belong to whichever desktop launches this portable client.
+          if summon_ok; then exit 0; fi
 
-          # Already showing? niri-jump-or-exec normally focuses a live window
-          # before we run; a race (or the off-niri path) can still land here.
-          if confirm; then exit 0; fi
-
-          # Nothing mapped → reap every mlqs UI (mapped or windowless orphan)
-          # and cold-start, then wait ~5s for a real window; one bounded retry,
-          # else give up loudly rather than leave a silent ghost. The launch
-          # lock is held across this, so a concurrent launch waits.
+          # No UI answered: reap stale UI processes and cold-start one. The
+          # launch lock is held across this, so a concurrent launch waits.
           for _ in 1 2; do
             for pid in $(pgrep -f "quickshell.* -p .*mlqs/ui" || true); do
               kill "$pid" 2>/dev/null || true
@@ -126,11 +107,11 @@
             sleep 0.3
             setsid nohup qs -p "${daemon}/share/mlqs/ui" 9>&- &
             for _ in $(seq 1 50); do
-              if confirm; then exit 0; fi
+              if summon_ok; then exit 0; fi
               sleep 0.1
             done
           done
-          echo "mlqs-client: UI did not map after 2 cold starts" >&2
+          echo "mlqs-client: UI did not connect after 2 cold starts" >&2
           exit 1
         '';
       };

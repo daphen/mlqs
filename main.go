@@ -1257,6 +1257,12 @@ func (d *daemon) handle(conn net.Conn, cmd command) {
 			fail(err)
 			return
 		}
+		now := time.Now().Unix()
+		for _, recipients := range [][]provider.Address{draft.To, draft.Cc, draft.Bcc} {
+			for _, recipient := range recipients {
+				d.db.UpsertContact(cmd.Account, recipient.Email, recipient.Name, now)
+			}
+		}
 		d.sendTo(conn, map[string]any{"type": "sent", "account": cmd.Account, "conv": cmd.Conv})
 	case "agenda":
 		cal := d.cals[cmd.Account]

@@ -16,13 +16,39 @@ Rectangle {
         return Backend.messages.length > 0 ? Backend.messages[Backend.messages.length - 1] : null
     }
 
-    // the focused message when it carries an invite, else null. Uses the same
-    // focus resolution as focusedMsg (falls back to the newest message when
-    // nothing is explicitly focused), so `y` accepts an invite in a
-    // single-message email instead of dropping into yank mode.
+    // The focused actionable invite, else null. Cancelled meetings and invites
+    // where the organizer requested no response must not expose RSVP shortcuts.
     function inviteMsg() {
         const m = focusedMsg()
-        return (m && m.hasInvite) ? m : null
+        return (m && m.hasInvite && m.meeting && !m.meeting.cancelled
+                && m.meeting.responseNeeded) ? m : null
+    }
+
+    function meetingState(meeting) {
+        if (!meeting) return ""
+        if (meeting.cancelled) return "Cancelled"
+        switch (meeting.response) {
+        case "accepted": return "Accepted"
+        case "tentative": return "Tentative"
+        case "declined": return "Declined"
+        case "needsAction": return meeting.responseNeeded ? "Awaiting response" : "No response requested"
+        default: return meeting.responseNeeded ? "" : "No response requested"
+        }
+    }
+
+    function meetingLine(meeting) {
+        if (!meeting || !meeting.start || !meeting.end) return "Invitation"
+        const start = new Date(meeting.start), end = new Date(meeting.end)
+        const mins = Math.max(0, Math.round((end - start) / 60000))
+        const duration = mins >= 60
+            ? Math.floor(mins / 60) + "h" + (mins % 60 ? " " + (mins % 60) + "m" : "")
+            : mins + "m"
+        let line = Qt.formatDate(start, "ddd MMM d") + ", " + Qt.formatTime(start, "hh:mm") + " (" + duration + ")"
+        if (meeting.conflictCount > 0)
+            line += "  ·  " + meeting.conflictCount + " conflict" + (meeting.conflictCount === 1 ? "" : "s")
+        const state = meetingState(meeting)
+        if (state !== "") line += "  ·  " + state
+        return line
     }
 
     // vim scrolloff, shared by cursor motions and read-mode hops
@@ -1143,7 +1169,10 @@ Rectangle {
                 // calendar invite: RSVP straight from the mail (⇧Y / m / n on
                 // the focused message do the same via keys)
                 Row {
+                    id: inviteRow
                     visible: modelData.hasInvite === true
+                    readonly property var meeting: modelData.meeting
+                    readonly property bool canRespond: meeting && !meeting.cancelled && meeting.responseNeeded
                     spacing: 8
                     Icon {
                         width: 14; height: 14
@@ -1153,19 +1182,21 @@ Rectangle {
                     }
                     Text {
                         anchors.verticalCenter: parent.verticalCenter
-                        text: "Invitation"
+                        text: cv.meetingLine(modelData.meeting)
                         color: Theme.fg_secondary
                         font.family: Theme.fontFamily; font.pixelSize: 12; font.weight: 500
                     }
                     Repeater {
-                        model: [
+                        model: inviteRow.canRespond ? [
                             { label: "accept", status: "accepted", cap: "⇧Y" },
                             { label: "maybe", status: "tentative", cap: "m" },
                             { label: "decline", status: "declined", cap: "n" }
-                        ]
+                        ] : []
                         Rectangle {
                             required property var modelData
                             readonly property string msgId: parent.parent.parent.modelData.id
+                            readonly property string eventId: parent.parent.parent.modelData.meeting
+                                ? parent.parent.parent.modelData.meeting.eventId : ""
                             height: 22; radius: 11
                             width: rsvpLbl.implicitWidth + 22
                             anchors.verticalCenter: parent.verticalCenter
@@ -1180,8 +1211,30 @@ Rectangle {
                                 color: Theme.fg
                                 font.family: Theme.fontFamily; font.pixelSize: 11; font.weight: 500
                             }
-                            TapHandler { onTapped: Backend.rsvpMail(msgId, modelData.status) }
+                            TapHandler { onTapped: Backend.rsvpMail(msgId, modelData.status, eventId) }
                         }
+                    }
+                }
+
+                Row {
+                    id: locationRow
+                    width: parent.width
+                    visible: modelData.hasInvite === true && modelData.meeting
+                    spacing: 8
+                    Icon {
+                        width: 14; height: 14
+                        anchors.verticalCenter: parent.verticalCenter
+                        name: "location-2"
+                        color: Theme.fg_muted
+                    }
+                    Text {
+                        width: Math.max(0, locationRow.width - 14 - locationRow.spacing)
+                        anchors.verticalCenter: parent.verticalCenter
+                        text: modelData.meeting && (modelData.meeting.location || "").trim() !== ""
+                            ? modelData.meeting.location : "No location"
+                        color: Theme.fg_muted
+                        font.family: Theme.fontFamily; font.pixelSize: 12
+                        elide: Text.ElideRight
                     }
                 }
 

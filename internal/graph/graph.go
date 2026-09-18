@@ -199,6 +199,7 @@ func (r apiRecipient) addr() provider.Address {
 }
 
 type apiMessage struct {
+	ODataType      string         `json:"@odata.type"`
 	ID             string         `json:"id"`
 	ConversationID string         `json:"conversationId"`
 	Subject        string         `json:"subject"`
@@ -218,6 +219,8 @@ type apiMessage struct {
 		ContentType string `json:"contentType"`
 		Content     string `json:"content"`
 	} `json:"body"`
+	ResponseRequested bool      `json:"responseRequested"`
+	Event             *apiEvent `json:"event"`
 }
 
 // snippet flattens Graph's bodyPreview: unlike gmail's snippet it keeps raw
@@ -372,6 +375,37 @@ func (c *Client) GetConversation(ctx context.Context, id string) ([]provider.Mes
 				pm.BodyHTML = m.Body.Content
 			} else {
 				pm.BodyText = m.Body.Content
+			}
+		}
+		if strings.EqualFold(m.ODataType, "#microsoft.graph.eventMessageRequest") {
+			var detail apiMessage
+			q := url.Values{"$expand": {"microsoft.graph.eventMessage/event"}}
+			if err := c.do(ctx, "GET", "/me/messages/"+url.PathEscape(m.ID), q, nil, &detail); err != nil {
+				debuglog.API("graph event message %s: %v", m.ID, err)
+			} else if detail.Event != nil {
+				ev := detail.Event
+				meeting := &provider.Meeting{
+					EventID: ev.ID, ICalUID: ev.ICalUID,
+					Start: ev.Start.parse(), End: ev.End.parse(),
+					ResponseNeeded: detail.ResponseRequested,
+					Cancelled:      ev.IsCancelled,
+				}
+				if ev.Location != nil {
+					meeting.Location = ev.Location.DisplayName
+				}
+				if ev.ResponseStatus != nil {
+					meeting.Response = mapResponse(ev.ResponseStatus.Response)
+				}
+				if ev.OnlineMeeting != nil {
+					meeting.JoinURL = ev.OnlineMeeting.JoinURL
+				}
+				if meeting.JoinURL == "" {
+					meeting.JoinURL = ev.OnlineMeetingURL
+				}
+				if !ev.IsCancelled {
+					meeting.ConflictCount = c.conflictCount(ctx, *ev)
+				}
+				pm.Meeting = meeting
 			}
 		}
 		if m.HasAttachments {
@@ -709,6 +743,7 @@ type apiEvent struct {
 	ResponseStatus *struct {
 		Response string `json:"response"`
 	} `json:"responseStatus"`
+	ShowAs string `json:"showAs"`
 }
 
 func mapResponse(r string) string {
@@ -786,7 +821,38 @@ func (c *Client) Calendars(ctx context.Context) ([]provider.Calendar, error) {
 	return out, nil
 }
 
-const eventSelect = "id,subject,start,end,isAllDay,isCancelled,webLink,iCalUId,onlineMeeting,onlineMeetingUrl,location,organizer,attendees,responseStatus,bodyPreview"
+const eventSelect = "id,subject,start,end,isAllDay,isCancelled,webLink,iCalUId,onlineMeeting,onlineMeetingUrl,location,organizer,attendees,responseStatus,bodyPreview,showAs"
+
+func (c *Client) conflictCount(ctx context.Context, invite apiEvent) int {
+	start, end := invite.Start.parse(), invite.End.parse()
+	if start.IsZero() || end.IsZero() || !end.After(start) {
+		return 0
+	}
+	q := url.Values{
+		"startDateTime": {start.UTC().Format(time.RFC3339)},
+		"endDateTime":   {end.UTC().Format(time.RFC3339)},
+		"$top":          {"250"},
+		"$select":       {"id,iCalUId,start,end,showAs,isCancelled"},
+	}
+	var res struct {
+		Items []apiEvent `json:"value"`
+	}
+	if err := c.do(ctx, "GET", "/me/calendarView", q, nil, &res); err != nil {
+		debuglog.API("graph invite conflicts %s: %v", invite.ID, err)
+		return 0
+	}
+	count := 0
+	for _, ev := range res.Items {
+		if ev.IsCancelled || ev.ID == invite.ID || (invite.ICalUID != "" && ev.ICalUID == invite.ICalUID) {
+			continue
+		}
+		switch ev.ShowAs {
+		case "busy", "tentative", "oof", "workingElsewhere":
+			count++
+		}
+	}
+	return count
+}
 
 func (c *Client) Events(ctx context.Context, calID string, from, to time.Time) ([]provider.CalEvent, error) {
 	path := "/me/calendars/" + url.PathEscape(calID) + "/calendarView"

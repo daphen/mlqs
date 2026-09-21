@@ -5,11 +5,13 @@ import (
 	"encoding/json"
 	"errors"
 	"net"
+	"slices"
 	"sync"
 	"testing"
 	"time"
 
 	"mlqs/internal/cache"
+	"mlqs/internal/config"
 	"mlqs/internal/provider"
 
 	"golang.org/x/oauth2"
@@ -39,11 +41,13 @@ type pacedReadProvider struct {
 	folderCalls int
 	failFirst   int
 	callTimes   []time.Time
+	successful  []string
+	state       map[string]bool
 	marked      chan struct{}
 	refreshed   chan struct{}
 }
 
-func (p *pacedReadProvider) MarkRead(context.Context, string, bool) error {
+func (p *pacedReadProvider) MarkRead(_ context.Context, id string, read bool) error {
 	p.mu.Lock()
 	p.active++
 	p.markCalls++
@@ -62,6 +66,14 @@ func (p *pacedReadProvider) MarkRead(context.Context, string, bool) error {
 	if call <= p.failFirst {
 		return errors.New("gmail: 429 rateLimitExceeded")
 	}
+	p.mu.Lock()
+	p.state[id] = read
+	if read {
+		p.successful = append(p.successful, id+":read")
+	} else {
+		p.successful = append(p.successful, id+":unread")
+	}
+	p.mu.Unlock()
 	p.marked <- struct{}{}
 	return nil
 }
@@ -226,27 +238,42 @@ func TestBulkReadIsPacedRetriedAndRefreshesFoldersOnce(t *testing.T) {
 
 	p := &pacedReadProvider{
 		failFirst: 2,
-		marked:    make(chan struct{}, 4),
+		state:     map[string]bool{},
+		marked:    make(chan struct{}, 8),
 		refreshed: make(chan struct{}, 1),
 	}
 	d := &daemon{
+		cfg:                &config.Config{Accounts: []config.Account{{Name: "work"}}},
 		db:                 db,
 		providers:          map[string]provider.Provider{"work": p},
+		conns:              map[net.Conn]struct{}{},
 		readPace:           15 * time.Millisecond,
 		readRetryBase:      time.Millisecond,
 		folderRefreshDelay: 30 * time.Millisecond,
 	}
 	client, server := net.Pipe()
 	defer client.Close()
-	defer server.Close()
+	go d.serve(server)
 
-	for i := 0; i < 4; i++ {
-		go d.handle(server, command{Type: "markread", Account: "work", ID: string(rune('a' + i)), Text: "true"})
+	dec := json.NewDecoder(client)
+	for i := 0; i < 2; i++ {
+		var bootstrap map[string]any
+		if err := dec.Decode(&bootstrap); err != nil {
+			t.Fatal(err)
+		}
 	}
-	for i := 0; i < 4; i++ {
+	enc := json.NewEncoder(client)
+	for _, read := range []bool{true, false} {
+		for i := 0; i < 4; i++ {
+			if err := enc.Encode(command{Type: "markread", Account: "work", ID: string(rune('a' + i)), Text: map[bool]string{true: "true", false: "false"}[read]}); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	for i := 0; i < 8; i++ {
 		select {
 		case <-p.marked:
-		case <-time.After(time.Second):
+		case <-time.After(2 * time.Second):
 			t.Fatal("timed out waiting for paced read mutations")
 		}
 	}
@@ -259,8 +286,8 @@ func TestBulkReadIsPacedRetriedAndRefreshesFoldersOnce(t *testing.T) {
 
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	if p.markCalls != 6 {
-		t.Fatalf("mark calls = %d, want 6 including two retries", p.markCalls)
+	if p.markCalls != 10 {
+		t.Fatalf("mark calls = %d, want 10 including two retries", p.markCalls)
 	}
 	if p.maxActive != 1 {
 		t.Fatalf("concurrent mark calls = %d, want 1", p.maxActive)
@@ -268,8 +295,17 @@ func TestBulkReadIsPacedRetriedAndRefreshesFoldersOnce(t *testing.T) {
 	if p.folderCalls != 1 {
 		t.Fatalf("folder refreshes = %d, want 1", p.folderCalls)
 	}
-	if elapsed := p.callTimes[len(p.callTimes)-1].Sub(p.callTimes[0]); elapsed < 60*time.Millisecond {
+	if elapsed := p.callTimes[len(p.callTimes)-1].Sub(p.callTimes[0]); elapsed < 120*time.Millisecond {
 		t.Fatalf("mutations were not paced: %v", elapsed)
+	}
+	want := []string{"a:read", "b:read", "c:read", "d:read", "a:unread", "b:unread", "c:unread", "d:unread"}
+	if !slices.Equal(p.successful, want) {
+		t.Fatalf("successful operations = %#v, want %#v", p.successful, want)
+	}
+	for id, read := range p.state {
+		if read {
+			t.Fatalf("%s ended read after ordered undo", id)
+		}
 	}
 }
 

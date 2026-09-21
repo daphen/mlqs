@@ -179,8 +179,13 @@ func sockPath() string {
 	return "/tmp/mlqs.sock"
 }
 
+type readJob struct {
+	conn net.Conn
+	cmd  command
+}
+
 type readLane struct {
-	mu   sync.Mutex
+	jobs chan readJob
 	next time.Time
 }
 
@@ -228,7 +233,9 @@ func (d *daemon) readLane(account string) *readLane {
 		d.readLanes = map[string]*readLane{}
 	}
 	if d.readLanes[account] == nil {
-		d.readLanes[account] = &readLane{}
+		lane := &readLane{jobs: make(chan readJob, 1024)}
+		d.readLanes[account] = lane
+		go d.runReadLane(account, lane)
 	}
 	return d.readLanes[account]
 }
@@ -250,11 +257,23 @@ func retryDelay(err error, fallback time.Duration) time.Duration {
 	return fallback
 }
 
-func (d *daemon) markRead(account, id string, read bool) error {
-	lane := d.readLane(account)
-	lane.mu.Lock()
-	defer lane.mu.Unlock()
+func (d *daemon) enqueueRead(conn net.Conn, cmd command) {
+	d.readLane(cmd.Account).jobs <- readJob{conn: conn, cmd: cmd}
+}
 
+func (d *daemon) runReadLane(account string, lane *readLane) {
+	for job := range lane.jobs {
+		err := d.markRead(account, lane, job.cmd.ID, job.cmd.Text != "false")
+		if err != nil {
+			d.commandFailed(job.conn, job.cmd, err)
+			continue
+		}
+		d.db.SetConvFlags(account, job.cmd.ID, "unread", job.cmd.Text == "false")
+		d.scheduleFolderRefresh(account)
+	}
+}
+
+func (d *daemon) markRead(account string, lane *readLane, id string, read bool) error {
 	pace := d.readPace
 	if pace <= 0 {
 		pace = 150 * time.Millisecond
@@ -277,6 +296,19 @@ func (d *daemon) markRead(account, id string, read bool) error {
 		}
 		time.Sleep(retryDelay(err, base<<attempt))
 	}
+}
+
+func (d *daemon) commandFailed(conn net.Conn, cmd command, err error) {
+	debuglog.API("%s %s: %v", cmd.Type, cmd.Account, err)
+	var re *oauth2.RetrieveError
+	if errors.As(err, &re) && re.ErrorCode == "invalid_grant" {
+		d.sendTo(conn, map[string]any{
+			"type": "authRequired", "account": cmd.Account,
+			"operation": cmd.Type, "id": cmd.ID,
+		})
+		return
+	}
+	d.sendTo(conn, map[string]any{"type": "toast", "text": fmt.Sprintf("mlqs %s: %v", cmd.Type, err)})
 }
 
 func (d *daemon) scheduleFolderRefresh(account string) {
@@ -784,7 +816,9 @@ func (d *daemon) serve(conn net.Conn) {
 			} else {
 				d.broadcast(map[string]any{"type": "toast", "text": "Summaries enabled — press the key again to summarize"})
 			}
-		case "folders", "conversations", "conversation", "openhtml", "openatt", "search", "threads", "contacts", "markread", "star", "archive", "unarchive", "trash", "untrash", "send",
+		case "markread":
+			d.enqueueRead(conn, cmd)
+		case "folders", "conversations", "conversation", "openhtml", "openatt", "search", "threads", "contacts", "star", "archive", "unarchive", "trash", "untrash", "send",
 			"agenda", "rsvp", "rsvpmail", "createevent", "calendars", "summarize":
 			go d.handle(conn, cmd)
 		default:
@@ -951,18 +985,7 @@ func (d *daemon) handle(conn net.Conn, cmd command) {
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
 
-	fail := func(err error) {
-		debuglog.API("%s %s: %v", cmd.Type, cmd.Account, err)
-		var re *oauth2.RetrieveError
-		if errors.As(err, &re) && re.ErrorCode == "invalid_grant" {
-			d.sendTo(conn, map[string]any{
-				"type": "authRequired", "account": cmd.Account,
-				"operation": cmd.Type, "id": cmd.ID,
-			})
-			return
-		}
-		d.sendTo(conn, map[string]any{"type": "toast", "text": fmt.Sprintf("mlqs %s: %v", cmd.Type, err)})
-	}
+	fail := func(err error) { d.commandFailed(conn, cmd, err) }
 	switch cmd.Type {
 	case "folders":
 		// warm-start: cached sidebar first (also auto-selects inbox → cached
@@ -1287,13 +1310,6 @@ func (d *daemon) handle(conn net.Conn, cmd command) {
 		}
 		d.sendTo(conn, map[string]any{"type": "conversations", "account": cmd.Account,
 			"folder": "", "items": pg.Conversations, "next": pg.NextCursor})
-	case "markread":
-		if err := d.markRead(cmd.Account, cmd.ID, cmd.Text != "false"); err != nil {
-			fail(err)
-		} else {
-			d.db.SetConvFlags(cmd.Account, cmd.ID, "unread", cmd.Text == "false")
-			d.scheduleFolderRefresh(cmd.Account)
-		}
 	case "star":
 		if err := p.Star(ctx, cmd.ID, cmd.Text != "false"); err != nil {
 			fail(err)

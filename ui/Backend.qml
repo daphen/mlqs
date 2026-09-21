@@ -309,6 +309,7 @@ Singleton {
     // Mark every summarized unread conversation read, reusing the markread path.
     function markAllRead(ids) {
         if (!ids || !ids.length) return
+        lastRead = null
         for (const id of ids) {
             const i = findRow(id)
             const acct = i >= 0 ? (convsModel.get(i).account || currentAccount) : currentAccount
@@ -327,11 +328,13 @@ Singleton {
             if (r.unread) rows.push({ tid: r.tid, account: r.account })
         }
         if (rows.length === 0) { toast("nothing unread here"); return }
+        lastRead = { folderId: currentFolderId, items: rows }
+        lastRemoved = null
         for (const r of rows) {
             send({ type: "markread", account: r.account || currentAccount, id: r.tid, text: "true" })
             setLocalRead(r.tid, true, r.account)
         }
-        toast("marked " + rows.length + " read")
+        toast("Marked all as read · u to undo")
     }
 
     // Safety net: if the daemon never replies (hung provider), drop the spinner.
@@ -620,6 +623,7 @@ Singleton {
     // Shift+R in the index: flip a thread's read state (server + local)
     function toggleRead(row) {
         if (!row || !row.tid) return
+        lastRead = null
         const acct = row.account || currentAccount
         const read = !!row.unread   // unread → mark read; read → mark unread
         send({ type: "markread", account: acct, id: row.tid, text: read ? "true" : "false" })
@@ -644,6 +648,7 @@ Singleton {
     // one-level undo for destructive moves (u) — Gmail restores server-side.
     // Holds a LIST so visual-mode batches undo as one unit.
     property var lastRemoved: null
+    property var lastRead: null
 
     function _snapRow(i) {
         const r = convsModel.get(i)
@@ -664,6 +669,7 @@ Singleton {
         }
         if (items.length === 0) return 0
         lastRemoved = { kind: kind, folderId: currentFolderId, items: items }
+        lastRead = null
         for (const it of items) {
             const acct = it.row.account || currentAccount
             send({ type: kind, account: acct, id: it.row.tid })
@@ -689,6 +695,7 @@ Singleton {
     // rows: model rows; if any unread → all read, else all unread
     function batchRead(rows) {
         if (!rows.length) return
+        lastRead = null
         const read = rows.some(r => r.unread)
         for (const r of rows) {
             if (!!r.unread !== read) continue
@@ -709,6 +716,18 @@ Singleton {
             if (i >= 0) convsModel.setProperty(i, "starred", star)
         }
         toast(star ? "starred" : "unstarred")
+    }
+
+    function undoLast() {
+        if (!lastRead) { undoRemove(); return }
+        const lr = lastRead
+        lastRead = null
+        for (const r of lr.items) {
+            const acct = r.account || currentAccount
+            send({ type: "markread", account: acct, id: r.tid, text: "false" })
+            if (lr.folderId === currentFolderId) setLocalRead(r.tid, false, acct)
+        }
+        toast("Restored unread mail")
     }
 
     function undoRemove() {

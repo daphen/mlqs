@@ -77,9 +77,6 @@ Singleton {
     property string nextCursor: ""
     property string pendingCursor: ""
     property bool loadingConvs: false
-    // folder id whose authoritative (live) page has landed — gates the cached
-    // warm-paint so it can't clobber fresh data mid-load
-    property string _freshFolder: ""
     property var messages: []
     property string openConvId: ""
     property string openConvSubject: ""
@@ -1105,17 +1102,7 @@ Singleton {
                 const acct = e.account || ""
                 if (acct === "" || (e.folder || "") !== _inboxIdFor(acct)) return
                 const paging = !!_pagingAccounts[acct]
-                // the cached warm-paint only fills an account we have nothing for
-                if (e.cached) {
-                    if (_convsByAccount[acct] === undefined) {
-                        const cm = Object.assign({}, _convsByAccount)
-                        cm[acct] = e.items || []
-                        _convsByAccount = cm
-                        _rebuildMerged()
-                    }
-                    return
-                }
-                loadingConvs = false
+                if (e.cached) return
                 const em = Object.assign({}, acctError); delete em[acct]; acctError = em
                 const cm2 = Object.assign({}, _convsByAccount)
                 // a page appends to that account's rows; a fresh load replaces them
@@ -1123,26 +1110,17 @@ Singleton {
                 _convsByAccount = cm2
                 const km = Object.assign({}, cursorByAccount); km[acct] = e.next || ""; cursorByAccount = km
                 if (paging) { const pm = Object.assign({}, _pagingAccounts); delete pm[acct]; _pagingAccounts = pm }
-                _rebuildMerged()
+                if (_mergedResultsComplete()) {
+                    loadingConvs = false
+                    _rebuildMerged()
+                }
                 return
             }
             if (e.account !== currentAccount) return
             if ((e.folder || "") !== currentFolderId) return
             const items = e.items || []
-            if (e.cached) {
-                // warm-start paint: fill instantly, but never overwrite a live
-                // result that already landed for this folder (races the fetch)
-                if (pendingCursor === "" && (convsModel.count === 0
-                        || _freshFolder !== currentAccount + "/" + currentFolderId)) {
-                    convsModel.clear()
-                    for (const c of items) if (findRow(c.id) < 0) convsModel.append(toRow(c))
-                    loadingConvs = false
-                }
-                return
-            }
-            // live result — authoritative; replaces the cached paint
+            if (e.cached) return
             loadingConvs = false
-            _freshFolder = currentAccount + "/" + currentFolderId
             if (pendingCursor !== "") pendingCursor = ""
             else convsModel.clear()
             // later pages can overlap the stitched unread block — dedup
@@ -1289,7 +1267,7 @@ Singleton {
             if (merged && e.account && _convsByAccount[e.account] === undefined) {
                 const em2 = Object.assign({}, acctError); em2[e.account] = true; acctError = em2
                 const cm3 = Object.assign({}, _convsByAccount); cm3[e.account] = []; _convsByAccount = cm3
-                if (unified || _mergedResultsComplete()) {
+                if (_mergedResultsComplete()) {
                     loadingConvs = false
                     _rebuildMerged()
                 }

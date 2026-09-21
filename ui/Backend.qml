@@ -423,6 +423,11 @@ Singleton {
     // unread block first (the ordering invariant convUpdated's reinsertion relies
     // on), date-desc within each block; Threads and search results are chronologies,
     // so they sort on date alone — safe because convUpdated bails out in both.
+    function _mergedResultsComplete() {
+        const accts = accountFilter === "" ? workspaces.map(w => w.id) : [accountFilter]
+        return accts.every(a => _convsByAccount[a] !== undefined)
+    }
+
     function _rebuildMerged() {
         const all = []
         for (const acct in _convsByAccount)
@@ -1074,8 +1079,10 @@ Singleton {
                 const sm = Object.assign({}, _convsByAccount)
                 sm[sacct] = e.items || []
                 _convsByAccount = sm
-                loadingConvs = false
-                _rebuildMerged()
+                if (_mergedResultsComplete()) {
+                    loadingConvs = false
+                    _rebuildMerged()
+                }
                 return
             }
             if (threadsView && (e.folder || "") === "__threads") {
@@ -1086,8 +1093,10 @@ Singleton {
                 const tm = Object.assign({}, _convsByAccount)
                 tm[tacct] = e.items || []
                 _convsByAccount = tm
-                loadingConvs = false
-                _rebuildMerged()
+                if (_mergedResultsComplete()) {
+                    loadingConvs = false
+                    _rebuildMerged()
+                }
                 return
             }
             if (unified) {
@@ -1227,9 +1236,10 @@ Singleton {
             if (!filteredView) return
             const acct = e.account || ""
             const m = Object.assign({}, _convsByAccount); m[acct] = e.items || []; _convsByAccount = m
-            loadingConvs = false
-            // reuse the merged-inbox rebuild: same shape, one list across accounts
-            _rebuildMerged()
+            if (_mergedResultsComplete()) {
+                loadingConvs = false
+                _rebuildMerged()
+            }
         } else if (e.type === "contacts") {
             contactsResult(e.items || [], e.query || "")
         } else if (e.type === "readmarked") {
@@ -1279,8 +1289,10 @@ Singleton {
             if (merged && e.account && _convsByAccount[e.account] === undefined) {
                 const em2 = Object.assign({}, acctError); em2[e.account] = true; acctError = em2
                 const cm3 = Object.assign({}, _convsByAccount); cm3[e.account] = []; _convsByAccount = cm3
-                loadingConvs = false
-                _rebuildMerged()
+                if (unified || _mergedResultsComplete()) {
+                    loadingConvs = false
+                    _rebuildMerged()
+                }
             }
             if ((e.text || "").indexOf("mlqs send") === 0)
                 messages = messages.map(m => m.sending ? Object.assign({}, m, { sending: false, failed: true }) : m)

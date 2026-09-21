@@ -6,6 +6,7 @@ import (
 	"errors"
 	"net"
 	"testing"
+	"time"
 
 	"mlqs/internal/cache"
 	"mlqs/internal/provider"
@@ -20,6 +21,25 @@ type expiredProvider struct {
 type sendProvider struct {
 	provider.Provider
 	err error
+}
+
+type delayedUnreadProvider struct {
+	provider.Provider
+	unreadStarted chan struct{}
+	releaseUnread chan struct{}
+}
+
+func (p delayedUnreadProvider) ListConversations(_ context.Context, folder, _ string, _ int, unreadOnly bool) (provider.Page, error) {
+	if unreadOnly {
+		close(p.unreadStarted)
+		<-p.releaseUnread
+		return provider.Page{Conversations: []provider.Conversation{{
+			ID: "older-unread", Subject: "Older unread", Unread: true, FolderIDs: []string{folder},
+		}}}, nil
+	}
+	return provider.Page{Conversations: []provider.Conversation{{
+		ID: "newest", Subject: "Newest", FolderIDs: []string{folder},
+	}}, NextCursor: "next"}, nil
 }
 
 func (p sendProvider) Send(context.Context, provider.Draft) error {
@@ -89,6 +109,62 @@ func TestSendLearnsContactsOnlyAfterSuccess(t *testing.T) {
 	}
 	if contacts := db.QueryContacts("work", "failed@", 8); len(contacts) != 0 {
 		t.Fatalf("failed send learned contacts: %#v", contacts)
+	}
+}
+
+func TestConversationListDoesNotWaitForFullUnreadRefresh(t *testing.T) {
+	t.Setenv("XDG_DATA_HOME", t.TempDir())
+	db, err := cache.Open()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+
+	p := delayedUnreadProvider{
+		unreadStarted: make(chan struct{}),
+		releaseUnread: make(chan struct{}),
+	}
+	client, server := net.Pipe()
+	defer client.Close()
+	defer server.Close()
+	client.SetReadDeadline(time.Now().Add(500 * time.Millisecond))
+
+	d := &daemon{db: db, providers: map[string]provider.Provider{"work": p}}
+	done := make(chan struct{})
+	go func() {
+		d.handle(server, command{Type: "conversations", Account: "work", Folder: "INBOX"})
+		close(done)
+	}()
+
+	var event struct {
+		Type  string                  `json:"type"`
+		Items []provider.Conversation `json:"items"`
+		Next  string                  `json:"next"`
+	}
+	if err := json.NewDecoder(client).Decode(&event); err != nil {
+		close(p.releaseUnread)
+		t.Fatalf("foreground conversation page did not arrive: %v", err)
+	}
+	if event.Type != "conversations" || event.Next != "next" || len(event.Items) != 1 || event.Items[0].ID != "newest" {
+		close(p.releaseUnread)
+		t.Fatalf("foreground event = %#v", event)
+	}
+	select {
+	case <-p.unreadStarted:
+	case <-time.After(time.Second):
+		close(p.releaseUnread)
+		t.Fatal("full unread refresh did not start after foreground response")
+	}
+
+	close(p.releaseUnread)
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("background unread refresh did not finish")
+	}
+	cached := db.CachedConversations("work", "INBOX", 10)
+	if len(cached) != 2 || cached[0].ID != "older-unread" || !cached[0].Unread {
+		t.Fatalf("refreshed cache = %#v", cached)
 	}
 }
 

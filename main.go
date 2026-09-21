@@ -944,77 +944,70 @@ func (d *daemon) handle(conn net.Conn, cmd command) {
 				"folder": cmd.Folder, "items": kept, "next": cur})
 			return
 		}
-		// warm-start: paint the cached folder instantly, then fetch live below
-		if cached := d.applyRules(d.db.CachedConversations(cmd.Account, cmd.Folder, 200), false); len(cached) > 0 {
+		// Paint cached unreads plus the newest page before refreshing the complete
+		// unread set; this handler already runs off the socket reader.
+		cached := d.applyRules(d.db.CachedConversations(cmd.Account, cmd.Folder, 200), false)
+		if len(cached) > 0 {
 			d.sendTo(conn, map[string]any{"type": "conversations", "account": cmd.Account,
 				"folder": cmd.Folder, "items": cached, "cached": true})
 		}
-		// First page: unreads pin to the top — fetch the folder's full unread
-		// set (capped) and the newest page of everything, stitched. Deep-buried
-		// unreads surface instead of hiding hundreds of rows down.
-		var wg sync.WaitGroup
-		var unread []provider.Conversation
-		var normal provider.Page
-		var uerr, nerr error
-		wg.Add(2)
-		go func() {
-			defer wg.Done()
-			cur := ""
-			for len(unread) < 200 {
-				pg, err := p.ListConversations(ctx, cmd.Folder, cur, 100, true)
-				if err != nil {
-					uerr = err
-					return
-				}
-				unread = append(unread, pg.Conversations...)
-				if pg.NextCursor == "" {
-					break
-				}
-				cur = pg.NextCursor
-			}
-		}()
-		go func() {
-			defer wg.Done()
-			normal, nerr = p.ListConversations(ctx, cmd.Folder, "", 50, false)
-		}()
-		wg.Wait()
+
+		normal, nerr := p.ListConversations(ctx, cmd.Folder, "", 50, false)
 		if nerr != nil {
 			fail(nerr)
 			return
 		}
-		if uerr != nil {
-			debuglog.API("unread stitch %s: %v", cmd.Folder, uerr)
+		d.db.UpsertConversations(cmd.Account, normal.Conversations)
+		d.markHiddenRead(cmd.Account, d.applyRules(normal.Conversations, true))
+
+		visibleNormal := d.applyRules(normal.Conversations, false)
+		fresh := make(map[string]provider.Conversation, len(visibleNormal))
+		for _, c := range visibleNormal {
+			fresh[c.ID] = c
 		}
 		seen := map[string]bool{}
-		for _, c := range unread {
-			seen[c.ID] = true
-		}
-		items := unread
-		for _, c := range normal.Conversations {
-			if !seen[c.ID] {
+		items := make([]provider.Conversation, 0, len(cached)+len(visibleNormal))
+		for _, c := range cached {
+			if current, ok := fresh[c.ID]; ok {
+				c = current
+			}
+			if c.Unread {
+				seen[c.ID] = true
 				items = append(items, c)
 			}
 		}
-		d.db.UpsertConversations(cmd.Account, items)
-		// The unread fetch is the folder's FULL unread set (when uncapped):
-		// any cached row still flagged unread that it didn't return was read
-		// elsewhere (another client, the web UI). Without this, those rows
-		// flash stale-unread in the warm paint on every open, forever —
-		// upserts only touch rows the live page contains.
-		if uerr == nil && len(unread) < 200 {
+		for _, c := range visibleNormal {
+			if !seen[c.ID] {
+				seen[c.ID] = true
+				items = append(items, c)
+			}
+		}
+		d.sendTo(conn, map[string]any{"type": "conversations", "account": cmd.Account,
+			"folder": cmd.Folder, "items": items, "next": normal.NextCursor})
+
+		var unread []provider.Conversation
+		cur := ""
+		for len(unread) < 200 {
+			pg, err := p.ListConversations(ctx, cmd.Folder, cur, 100, true)
+			if err != nil {
+				debuglog.API("unread refresh %s: %v", cmd.Folder, err)
+				return
+			}
+			unread = append(unread, pg.Conversations...)
+			if pg.NextCursor == "" {
+				break
+			}
+			cur = pg.NextCursor
+		}
+		d.db.UpsertConversations(cmd.Account, unread)
+		if len(unread) < 200 {
 			ids := make([]string, 0, len(unread))
 			for _, c := range unread {
 				ids = append(ids, c.ID)
 			}
 			d.db.ReconcileFolderRead(cmd.Account, cmd.Folder, ids)
 		}
-		// Filter LAST. ReconcileFolderRead clears unread on cached rows absent from
-		// the unread list, so filtering before it would force hidden-but-unread rows
-		// to read in the cache and corrupt every later warm paint.
-		d.markHiddenRead(cmd.Account, d.applyRules(items, true))
-		items = d.applyRules(items, false)
-		d.sendTo(conn, map[string]any{"type": "conversations", "account": cmd.Account,
-			"folder": cmd.Folder, "items": items, "next": normal.NextCursor})
+		d.markHiddenRead(cmd.Account, d.applyRules(unread, true))
 	case "conversation":
 		msgs, err := p.GetConversation(ctx, cmd.ID)
 		if err != nil {

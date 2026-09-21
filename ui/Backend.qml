@@ -404,10 +404,8 @@ Singleton {
         nextCursor = ""; pendingCursor = ""
         _convsByAccount = {}; cursorByAccount = {}; _pagingAccounts = {}; acctError = {}
         loadingConvs = true
-        for (const w of workspaces) {
+        for (const w of workspaces)
             if (_inboxIdFor(w.id) !== "") _fetchUnifiedFor(w.id)
-            else send({ type: "folders", account: w.id })
-        }
     }
 
     function _fetchUnifiedFor(acct) {
@@ -1039,12 +1037,11 @@ Singleton {
             }
             // keep EVERY account's list — the merged fetch needs each inbox id,
             // and they differ per provider
+            const firstFolders = foldersByAccount[e.account] === undefined
             const fm = Object.assign({}, foldersByAccount)
             fm[e.account] = e.folders || []
             foldersByAccount = fm
-            // unified and this account hasn't been fetched yet → now we can
-            if (unified && inboxF && _convsByAccount[e.account] === undefined
-                    && !_pagingAccounts[e.account])
+            if (unified && firstFolders && inboxF)
                 _fetchUnifiedFor(e.account)
             if (e.account !== currentAccount) return
             // deterministic order: the daemon may deliver cached + fresh lists

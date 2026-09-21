@@ -179,11 +179,24 @@ func sockPath() string {
 	return "/tmp/mlqs.sock"
 }
 
+type readLane struct {
+	mu   sync.Mutex
+	next time.Time
+}
+
 type daemon struct {
 	cfg       *config.Config
 	db        *cache.DB
 	providers map[string]provider.Provider         // keyed by account name
 	cals      map[string]provider.CalendarProvider // keyed by account name
+
+	readMu             sync.Mutex
+	readLanes          map[string]*readLane
+	readPace           time.Duration
+	readRetryBase      time.Duration
+	folderRefreshMu    sync.Mutex
+	folderRefresh      map[string]*time.Timer
+	folderRefreshDelay time.Duration
 
 	calMu       sync.Mutex
 	calNotified map[string]bool // event occurrence keys already reminded
@@ -206,6 +219,99 @@ type daemon struct {
 	updEtag     string
 	updTarget   string // SHA to update toward from the last 200 ("" = up to date); replayed on a 304
 	updLast     time.Time
+}
+
+func (d *daemon) readLane(account string) *readLane {
+	d.readMu.Lock()
+	defer d.readMu.Unlock()
+	if d.readLanes == nil {
+		d.readLanes = map[string]*readLane{}
+	}
+	if d.readLanes[account] == nil {
+		d.readLanes[account] = &readLane{}
+	}
+	return d.readLanes[account]
+}
+
+func rateLimited(err error) bool {
+	if err == nil {
+		return false
+	}
+	s := strings.ToLower(err.Error())
+	return strings.Contains(s, " 429 ") || strings.Contains(s, ": 429") ||
+		strings.Contains(s, "too many requests") || strings.Contains(s, "ratelimit")
+}
+
+func retryDelay(err error, fallback time.Duration) time.Duration {
+	var retry interface{ RetryAfter() time.Duration }
+	if errors.As(err, &retry) && retry.RetryAfter() > 0 {
+		return retry.RetryAfter()
+	}
+	return fallback
+}
+
+func (d *daemon) markRead(account, id string, read bool) error {
+	lane := d.readLane(account)
+	lane.mu.Lock()
+	defer lane.mu.Unlock()
+
+	pace := d.readPace
+	if pace <= 0 {
+		pace = 150 * time.Millisecond
+	}
+	if wait := time.Until(lane.next); wait > 0 {
+		time.Sleep(wait)
+	}
+
+	base := d.readRetryBase
+	if base <= 0 {
+		base = time.Second
+	}
+	for attempt := 0; ; attempt++ {
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		err := d.providers[account].MarkRead(ctx, id, read)
+		cancel()
+		lane.next = time.Now().Add(pace)
+		if err == nil || !rateLimited(err) || attempt == 3 {
+			return err
+		}
+		time.Sleep(retryDelay(err, base<<attempt))
+	}
+}
+
+func (d *daemon) scheduleFolderRefresh(account string) {
+	delay := d.folderRefreshDelay
+	if delay <= 0 {
+		delay = 2500 * time.Millisecond
+	}
+	p := d.providers[account]
+
+	d.folderRefreshMu.Lock()
+	if d.folderRefresh == nil {
+		d.folderRefresh = map[string]*time.Timer{}
+	}
+	if old := d.folderRefresh[account]; old != nil {
+		old.Stop()
+	}
+	var timer *time.Timer
+	timer = time.AfterFunc(delay, func() {
+		d.folderRefreshMu.Lock()
+		if d.folderRefresh[account] != timer {
+			d.folderRefreshMu.Unlock()
+			return
+		}
+		delete(d.folderRefresh, account)
+		d.folderRefreshMu.Unlock()
+
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		if fs, err := p.ListFolders(ctx); err == nil {
+			d.db.UpsertFolders(account, fs)
+			d.broadcast(map[string]any{"type": "folders", "account": account, "folders": fs})
+		}
+	})
+	d.folderRefresh[account] = timer
+	d.folderRefreshMu.Unlock()
 }
 
 // gitRev is injected at build time (ldflags -X main.gitRev=<sha>); empty on
@@ -1182,20 +1288,11 @@ func (d *daemon) handle(conn net.Conn, cmd command) {
 		d.sendTo(conn, map[string]any{"type": "conversations", "account": cmd.Account,
 			"folder": "", "items": pg.Conversations, "next": pg.NextCursor})
 	case "markread":
-		if err := p.MarkRead(ctx, cmd.ID, cmd.Text != "false"); err != nil {
+		if err := d.markRead(cmd.Account, cmd.ID, cmd.Text != "false"); err != nil {
 			fail(err)
 		} else {
 			d.db.SetConvFlags(cmd.Account, cmd.ID, "unread", cmd.Text == "false")
-			// rebroadcast counts once Gmail has digested the change — a sync
-			// tick in the gap otherwise overwrites the UI's local decrement
-			go func(account string) {
-				time.Sleep(2500 * time.Millisecond)
-				rctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-				defer cancel()
-				if fs, err := p.ListFolders(rctx); err == nil {
-					d.broadcast(map[string]any{"type": "folders", "account": account, "folders": fs})
-				}
-			}(cmd.Account)
+			d.scheduleFolderRefresh(cmd.Account)
 		}
 	case "star":
 		if err := p.Star(ctx, cmd.ID, cmd.Text != "false"); err != nil {

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net"
+	"sync"
 	"testing"
 	"time"
 
@@ -27,6 +28,53 @@ type delayedUnreadProvider struct {
 	provider.Provider
 	unreadStarted chan struct{}
 	releaseUnread chan struct{}
+}
+
+type pacedReadProvider struct {
+	provider.Provider
+	mu          sync.Mutex
+	active      int
+	maxActive   int
+	markCalls   int
+	folderCalls int
+	failFirst   int
+	callTimes   []time.Time
+	marked      chan struct{}
+	refreshed   chan struct{}
+}
+
+func (p *pacedReadProvider) MarkRead(context.Context, string, bool) error {
+	p.mu.Lock()
+	p.active++
+	p.markCalls++
+	call := p.markCalls
+	p.callTimes = append(p.callTimes, time.Now())
+	if p.active > p.maxActive {
+		p.maxActive = p.active
+	}
+	p.mu.Unlock()
+	defer func() {
+		p.mu.Lock()
+		p.active--
+		p.mu.Unlock()
+	}()
+	time.Sleep(3 * time.Millisecond)
+	if call <= p.failFirst {
+		return errors.New("gmail: 429 rateLimitExceeded")
+	}
+	p.marked <- struct{}{}
+	return nil
+}
+
+func (p *pacedReadProvider) ListFolders(context.Context) ([]provider.Folder, error) {
+	p.mu.Lock()
+	p.folderCalls++
+	p.mu.Unlock()
+	select {
+	case p.refreshed <- struct{}{}:
+	default:
+	}
+	return []provider.Folder{{ID: "INBOX", Role: "inbox"}}, nil
 }
 
 func (p delayedUnreadProvider) ListConversations(_ context.Context, folder, _ string, _ int, unreadOnly bool) (provider.Page, error) {
@@ -165,6 +213,63 @@ func TestConversationListDoesNotWaitForFullUnreadRefresh(t *testing.T) {
 	cached := db.CachedConversations("work", "INBOX", 10)
 	if len(cached) != 2 || cached[0].ID != "older-unread" || !cached[0].Unread {
 		t.Fatalf("refreshed cache = %#v", cached)
+	}
+}
+
+func TestBulkReadIsPacedRetriedAndRefreshesFoldersOnce(t *testing.T) {
+	t.Setenv("XDG_DATA_HOME", t.TempDir())
+	db, err := cache.Open()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+
+	p := &pacedReadProvider{
+		failFirst: 2,
+		marked:    make(chan struct{}, 4),
+		refreshed: make(chan struct{}, 1),
+	}
+	d := &daemon{
+		db:                 db,
+		providers:          map[string]provider.Provider{"work": p},
+		readPace:           15 * time.Millisecond,
+		readRetryBase:      time.Millisecond,
+		folderRefreshDelay: 30 * time.Millisecond,
+	}
+	client, server := net.Pipe()
+	defer client.Close()
+	defer server.Close()
+
+	for i := 0; i < 4; i++ {
+		go d.handle(server, command{Type: "markread", Account: "work", ID: string(rune('a' + i)), Text: "true"})
+	}
+	for i := 0; i < 4; i++ {
+		select {
+		case <-p.marked:
+		case <-time.After(time.Second):
+			t.Fatal("timed out waiting for paced read mutations")
+		}
+	}
+	select {
+	case <-p.refreshed:
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for coalesced folder refresh")
+	}
+	time.Sleep(50 * time.Millisecond)
+
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if p.markCalls != 6 {
+		t.Fatalf("mark calls = %d, want 6 including two retries", p.markCalls)
+	}
+	if p.maxActive != 1 {
+		t.Fatalf("concurrent mark calls = %d, want 1", p.maxActive)
+	}
+	if p.folderCalls != 1 {
+		t.Fatalf("folder refreshes = %d, want 1", p.folderCalls)
+	}
+	if elapsed := p.callTimes[len(p.callTimes)-1].Sub(p.callTimes[0]); elapsed < 60*time.Millisecond {
+		t.Fatalf("mutations were not paced: %v", elapsed)
 	}
 }
 

@@ -39,6 +39,7 @@
           # QsLib resolution: a locally-managed design system (dotfiles) wins;
           # everyone else falls back to the vendored snapshot in the package
           export QML2_IMPORT_PATH="$HOME/.local/share/qml:${daemon}/share/mlqs/ui/vendor''${QML2_IMPORT_PATH:+:$QML2_IMPORT_PATH}"
+          if [ "''${HYPR_CANVAS_PROFILE:-}" = deck ]; then export COCKPIT_DECK=1; fi
 
           # serialize the daemon aliveness check + spawn: concurrent launches
           # used to each see "no daemon" and spawn duplicates

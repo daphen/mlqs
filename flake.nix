@@ -60,7 +60,7 @@
             fi
           done
 
-          MLQS_DAEMON_BIN=${daemon}/bin/mlqs mlqs-daemon-ensure
+          MLQS_DAEMON_BIN=${daemon}/bin/mlqs mlqs-daemon-ensure 9>&-
 
           # Poke summonui and succeed only on the daemon ACK saying at least
           # one OTHER client (a real UI) heard the summon broadcast.

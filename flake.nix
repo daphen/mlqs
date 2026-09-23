@@ -23,17 +23,22 @@
         meta.mainProgram = "mlqs";
       };
 
+      daemonEnsure = pkgs.writeShellApplication {
+        name = "mlqs-daemon-ensure";
+        runtimeInputs = [ daemon pkgs.coreutils pkgs.python3 pkgs.util-linux ];
+        text = builtins.readFile ./mlqs-daemon-ensure;
+      };
+
       client = pkgs.writeShellApplication {
         name = "mlqs-client";
         # imagemagick: image yanks are png-normalized; python3: rich yank
         # inlines images as data URIs; util-linux: setsid-detached wl-copy
-        runtimeInputs = [ daemon pkgs.quickshell pkgs.procps pkgs.coreutils pkgs.xdg-utils
+        runtimeInputs = [ daemon daemonEnsure pkgs.quickshell pkgs.procps pkgs.coreutils pkgs.xdg-utils
                           pkgs.wl-clipboard pkgs.imagemagick pkgs.python3 pkgs.util-linux ];
         text = ''
           # QsLib resolution: a locally-managed design system (dotfiles) wins;
           # everyone else falls back to the vendored snapshot in the package
           export QML2_IMPORT_PATH="$HOME/.local/share/qml:${daemon}/share/mlqs/ui/vendor''${QML2_IMPORT_PATH:+:$QML2_IMPORT_PATH}"
-          sock="$XDG_RUNTIME_DIR/mlqs.sock"
 
           # serialize the daemon aliveness check + spawn: concurrent launches
           # used to each see "no daemon" and spawn duplicates
@@ -55,18 +60,7 @@
             fi
           done
 
-          alive=""
-          for pid in $(pgrep -x mlqs 2>/dev/null); do
-            # a zombie (unreaped child) matches pgrep but serves nothing
-            case "$(ps -o stat= -p "$pid" 2>/dev/null)" in Z*|"") ;; *) alive=1 ;; esac
-          done
-          if [ -z "$alive" ]; then
-            rm -f "$sock"
-            # 9>&- everywhere we spawn: children must not inherit the launch
-            # lock, or it outlives this script and deadlocks future launches
-            setsid nohup ${daemon}/bin/mlqs >/tmp/mlqs-daemon.log 2>&1 </dev/null 9>&- &
-          fi
-          for _ in $(seq 1 150); do [ -S "$sock" ] && break; sleep 0.1; done
+          MLQS_DAEMON_BIN=${daemon}/bin/mlqs mlqs-daemon-ensure
 
           # Poke summonui and succeed only on the daemon ACK saying at least
           # one OTHER client (a real UI) heard the summon broadcast.

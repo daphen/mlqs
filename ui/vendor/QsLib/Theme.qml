@@ -133,7 +133,7 @@ Singleton {
     readonly property int radiusInner: radiusCard - insetCard
     readonly property int padding:   12
     readonly property int paddingSm: 6
-    readonly property int fontSize:  Quickshell.env("HYPR_CANVAS_PROFILE") === "deck" ? 12 : 14
+    readonly property int fontSize:  Quickshell.env("COCKPIT_DECK") === "1" ? 12 : 14
     function resolveFontFamily(preferred) {
         const available = Qt.fontFamilies()
         const candidates = [preferred, "GeistMono Nerd Font", "DejaVu Sans Mono", "Noto Sans Mono", "Liberation Mono"]

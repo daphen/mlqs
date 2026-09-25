@@ -950,8 +950,9 @@ Singleton {
         for (let i = 0; i < eventsModel.count; i++)
             if (eventsModel.get(i).eid === row.eid) eventsModel.setProperty(i, "myStatus", status)
     }
-    function rsvpMail(msgId, status) {
-        send({ type: "rsvpmail", account: openConvAccount || currentAccount, conv: openConvId, id: msgId, text: status })
+    function rsvpMail(msgId, status, eventId) {
+        send({ type: "rsvpmail", account: openConvAccount || currentAccount, conv: openConvId,
+               id: msgId, event: eventId || "", text: status })
         toast("rsvp: " + status + "…")
     }
     function createEvent(d) {
@@ -1256,6 +1257,11 @@ Singleton {
             // names arriving after the agenda upgrade the filter-chip labels
             if (currentFolderId === "__calendar") _rebuildAgenda()
         } else if (e.type === "rsvped") {
+            messages = messages.map(m => {
+                if (m.id !== e.id || !m.meeting) return m
+                const meeting = Object.assign({}, m.meeting, { response: e.status || m.meeting.response })
+                return Object.assign({}, m, { meeting: meeting })
+            })
             toast("rsvp saved" + (e.status ? ": " + e.status : ""))
         } else if (e.type === "eventcreated") {
             toast("event created ✓")

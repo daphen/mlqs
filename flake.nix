@@ -109,11 +109,45 @@
           exit 1
         '';
       };
+
+      launcherLockCheck = pkgs.runCommand "mlqs-launcher-lock-check" {
+        nativeBuildInputs = [ pkgs.coreutils pkgs.procps ];
+      } ''
+        export HOME="$TMPDIR/home"
+        export XDG_RUNTIME_DIR="$TMPDIR/run"
+        mkdir -p "$HOME" "$XDG_RUNTIME_DIR"
+
+        ${client}/bin/mlqs-client >"$TMPDIR/client.log" 2>&1 &
+        client_pid=$!
+        cleanup() {
+          kill "$client_pid" 2>/dev/null || true
+          if [ -s "$XDG_RUNTIME_DIR/mlqs.pid" ]; then
+            kill "$(cat "$XDG_RUNTIME_DIR/mlqs.pid")" 2>/dev/null || true
+          fi
+        }
+        trap cleanup EXIT
+
+        for _ in $(seq 1 150); do
+          [ -s "$XDG_RUNTIME_DIR/mlqs.pid" ] && break
+          sleep 0.1
+        done
+        daemon_pid=$(cat "$XDG_RUNTIME_DIR/mlqs.pid")
+        kill -0 "$daemon_pid"
+
+        for fd in "/proc/$daemon_pid/fd/"*; do
+          if [ "$(readlink "$fd")" = "$XDG_RUNTIME_DIR/mlqs-launch.lock" ]; then
+            echo "daemon inherited the client launch lock on $fd" >&2
+            exit 1
+          fi
+        done
+        touch "$out"
+      '';
     in {
       packages.${system} = {
         mlqs = daemon;
         mlqs-client = client;
         default = client;
       };
+      checks.${system}.launcher-lock = launcherLockCheck;
     };
 }

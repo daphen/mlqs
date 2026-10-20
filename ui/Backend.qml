@@ -426,6 +426,24 @@ Singleton {
         return accts.every(a => _convsByAccount[a] !== undefined)
     }
 
+    function _listFailed(account, operation) {
+        const expected = threadsView ? "threads" : (searchView ? "search" : (filteredView ? "filtered" : "conversations"))
+        if (operation !== expected || !account) return false
+        if (merged) {
+            const errors = Object.assign({}, acctError); errors[account] = true; acctError = errors
+            const paging = Object.assign({}, _pagingAccounts); delete paging[account]; _pagingAccounts = paging
+            if (_convsByAccount[account] === undefined) {
+                const rows = Object.assign({}, _convsByAccount); rows[account] = []; _convsByAccount = rows
+            }
+            loadingConvs = !_mergedResultsComplete()
+            _rebuildMerged()
+        } else if (account === currentAccount) {
+            loadingConvs = false
+            pendingCursor = ""
+        }
+        return true
+    }
+
     function _rebuildMerged() {
         const all = []
         for (const acct in _convsByAccount)
@@ -433,14 +451,25 @@ Singleton {
         all.sort((threadsView || searchView)
             ? ((a, b) => b.dateMs - a.dateMs)
             : ((a, b) => (a.unread === b.unread) ? (b.dateMs - a.dateMs) : (a.unread ? -1 : 1)))
-        convsModel.clear()
+        _replaceRows(all)
+    }
+
+    function _replaceRows(rows) {
         const seen = {}
-        for (const r of all) {
-            const k = rowKey(r.account, r.tid)
-            if (seen[k]) continue
-            seen[k] = true
-            convsModel.append(r)
+        let index = 0
+        for (const row of rows) {
+            const key = rowKey(row.account, row.tid)
+            if (seen[key]) continue
+            seen[key] = true
+            const existing = findRow(row.tid, row.account)
+            if (existing < 0) convsModel.insert(index, row)
+            else {
+                if (existing !== index) convsModel.move(existing, index, 1)
+                convsModel.set(index, row)
+            }
+            index++
         }
+        if (convsModel.count > index) convsModel.remove(index, convsModel.count - index)
     }
 
     // single-key folder jumps (i inbox, s sent, …). Unfiltered, "inbox" means the
@@ -1092,10 +1121,8 @@ Singleton {
                 const sm = Object.assign({}, _convsByAccount)
                 sm[sacct] = e.items || []
                 _convsByAccount = sm
-                if (_mergedResultsComplete()) {
-                    loadingConvs = false
-                    _rebuildMerged()
-                }
+                loadingConvs = !_mergedResultsComplete()
+                _rebuildMerged()
                 return
             }
             if (threadsView && (e.folder || "") === "__threads") {
@@ -1106,10 +1133,8 @@ Singleton {
                 const tm = Object.assign({}, _convsByAccount)
                 tm[tacct] = e.items || []
                 _convsByAccount = tm
-                if (_mergedResultsComplete()) {
-                    loadingConvs = false
-                    _rebuildMerged()
-                }
+                loadingConvs = !_mergedResultsComplete()
+                _rebuildMerged()
                 return
             }
             if (unified) {
@@ -1118,30 +1143,31 @@ Singleton {
                 const acct = e.account || ""
                 if (acct === "" || (e.folder || "") !== _inboxIdFor(acct)) return
                 const paging = !!_pagingAccounts[acct]
-                if (e.cached) return
+                if (e.cached && (paging || _convsByAccount[acct] !== undefined)) return
                 const em = Object.assign({}, acctError); delete em[acct]; acctError = em
                 const cm2 = Object.assign({}, _convsByAccount)
                 // a page appends to that account's rows; a fresh load replaces them
                 cm2[acct] = paging ? (cm2[acct] || []).concat(e.items || []) : (e.items || [])
                 _convsByAccount = cm2
-                const km = Object.assign({}, cursorByAccount); km[acct] = e.next || ""; cursorByAccount = km
-                if (paging) { const pm = Object.assign({}, _pagingAccounts); delete pm[acct]; _pagingAccounts = pm }
-                if (_mergedResultsComplete()) {
-                    loadingConvs = false
-                    _rebuildMerged()
+                if (!e.cached) {
+                    const km = Object.assign({}, cursorByAccount); km[acct] = e.next || ""; cursorByAccount = km
+                    if (paging) { const pm = Object.assign({}, _pagingAccounts); delete pm[acct]; _pagingAccounts = pm }
                 }
+                loadingConvs = !_mergedResultsComplete()
+                _rebuildMerged()
                 return
             }
             if (e.account !== currentAccount) return
             if ((e.folder || "") !== currentFolderId) return
             const items = e.items || []
-            if (e.cached) return
+            if (e.cached && (!loadingConvs || pendingCursor !== "" || convsModel.count > 0)) return
             loadingConvs = false
-            if (pendingCursor !== "") pendingCursor = ""
-            else convsModel.clear()
-            // later pages can overlap the stitched unread block — dedup
-            for (const c of items) if (findRow(c.id) < 0) convsModel.append(toRow(c))
-            nextCursor = e.next || ""
+            if (pendingCursor !== "") {
+                pendingCursor = ""
+                // later pages can overlap the stitched unread block — dedup
+                for (const c of items) if (findRow(c.id) < 0) convsModel.append(toRow(c))
+            } else _replaceRows(items.map(c => toRow(c)))
+            if (!e.cached) nextCursor = e.next || ""
         } else if (e.type === "conversation") {
             if (e.id === openConvId) {
                 messages = e.messages || []
@@ -1162,6 +1188,8 @@ Singleton {
                 authRequiredAccount = e.account
                 authRequiredConversation = e.id
                 conversationError = "Your " + accountLabel(e.account) + " session expired."
+            } else if (_listFailed(e.account, e.operation)) {
+                toast("Your " + accountLabel(e.account) + " session expired.")
             }
         } else if (e.type === "convUpdated") {
             if (!e.conv) return
@@ -1280,14 +1308,7 @@ Singleton {
         } else if (e.type === "toast") {
             // merged view: a provider failing (bad host, dead auth) toasts per
             // account — mark it and keep whatever else arrived, and stop waiting
-            if (merged && e.account && _convsByAccount[e.account] === undefined) {
-                const em2 = Object.assign({}, acctError); em2[e.account] = true; acctError = em2
-                const cm3 = Object.assign({}, _convsByAccount); cm3[e.account] = []; _convsByAccount = cm3
-                if (_mergedResultsComplete()) {
-                    loadingConvs = false
-                    _rebuildMerged()
-                }
-            }
+            _listFailed(e.account, e.operation)
             if ((e.text || "").indexOf("mlqs send") === 0)
                 messages = messages.map(m => m.sending ? Object.assign({}, m, { sending: false, failed: true }) : m)
             toast(e.text || "")

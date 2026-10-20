@@ -7,7 +7,7 @@ ui=${MLQS_UI_ROOT:-$repo/ui}
 cp -R "$ui" "$tmp/ui"
 chmod -R u+w "$tmp/ui"
 cp "$ui/shell.qml" "$tmp/ui/MlqsWindow.qml"
-cp "$repo/test/warm-hide.qml" "$tmp/ui/shell.qml"
+cp "$repo/test/${1:-warm-hide.qml}" "$tmp/ui/shell.qml"
 printf '\nMlqsWindow MlqsWindow.qml\n' >> "$tmp/ui/qmldir"
 mkdir -m 700 "$tmp/runtime" "$tmp/home" "$tmp/bin"
 printf '#!/bin/sh\nexit 0\n' > "$tmp/bin/mlqs-daemon-ensure"
@@ -20,4 +20,5 @@ if ! env -u WAYLAND_DISPLAY -u DISPLAY HOME="$tmp/home" XDG_RUNTIME_DIR="$tmp/ru
     tail -30 "$tmp/output.log"
     exit 1
 fi
-grep 'PASS: cold show' "$tmp/output.log"
+if grep -E 'ERROR|TypeError|ReferenceError|Error:' "$tmp/output.log"; then exit 1; fi
+grep 'PASS:' "$tmp/output.log"

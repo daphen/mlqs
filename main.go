@@ -308,7 +308,8 @@ func (d *daemon) commandFailed(conn net.Conn, cmd command, err error) {
 		})
 		return
 	}
-	d.sendTo(conn, map[string]any{"type": "toast", "text": fmt.Sprintf("mlqs %s: %v", cmd.Type, err)})
+	d.sendTo(conn, map[string]any{"type": "toast", "account": cmd.Account, "operation": cmd.Type,
+		"text": fmt.Sprintf("mlqs %s: %v", cmd.Type, err)})
 }
 
 func (d *daemon) scheduleFolderRefresh(account string) {

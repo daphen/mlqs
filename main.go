@@ -244,6 +244,10 @@ func rateLimited(err error) bool {
 	if err == nil {
 		return false
 	}
+	var limited interface{ RateLimited() bool }
+	if errors.As(err, &limited) {
+		return limited.RateLimited()
+	}
 	s := strings.ToLower(err.Error())
 	return strings.Contains(s, " 429 ") || strings.Contains(s, ": 429") ||
 		strings.Contains(s, "too many requests") || strings.Contains(s, "ratelimit")
@@ -1117,17 +1121,55 @@ func (d *daemon) handle(conn net.Conn, cmd command) {
 
 		var unread []provider.Conversation
 		cur := ""
-		for len(unread) < 200 {
-			pg, err := p.ListConversations(ctx, cmd.Folder, cur, 100, true)
-			if err != nil {
-				debuglog.API("unread refresh %s: %v", cmd.Folder, err)
-				return
+		if ids, ok := p.(interface {
+			UnreadConversationIDs(context.Context, string, string, int) ([]string, string, error)
+		}); ok {
+			backfill, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
+			defer cancel()
+			known := make(map[string]provider.Conversation, len(cached)+len(normal.Conversations))
+			for _, conv := range d.db.CachedConversations(cmd.Account, cmd.Folder, 200) {
+				known[conv.ID] = conv
 			}
-			unread = append(unread, pg.Conversations...)
-			if pg.NextCursor == "" {
-				break
+			for _, conv := range normal.Conversations {
+				known[conv.ID] = conv
 			}
-			cur = pg.NextCursor
+			for len(unread) < 200 {
+				page, next, err := ids.UnreadConversationIDs(backfill, cmd.Folder, cur, 100)
+				if err != nil {
+					debuglog.API("unread refresh %s: %v", cmd.Folder, err)
+					return
+				}
+				for _, id := range page {
+					conv, exists := known[id]
+					if exists {
+						conv.Unread = true
+					} else {
+						conv, err = p.GetConversationMeta(backfill, id)
+						if err != nil {
+							debuglog.API("unread metadata %s: %v", cmd.Folder, err)
+							return
+						}
+					}
+					unread = append(unread, conv)
+				}
+				if next == "" {
+					break
+				}
+				cur = next
+			}
+		} else {
+			for len(unread) < 200 {
+				pg, err := p.ListConversations(ctx, cmd.Folder, cur, 100, true)
+				if err != nil {
+					debuglog.API("unread refresh %s: %v", cmd.Folder, err)
+					return
+				}
+				unread = append(unread, pg.Conversations...)
+				if pg.NextCursor == "" {
+					break
+				}
+				cur = pg.NextCursor
+			}
 		}
 		d.db.UpsertConversations(cmd.Account, unread)
 		if len(unread) < 200 {

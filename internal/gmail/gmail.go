@@ -7,6 +7,7 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"mime"
@@ -33,24 +34,31 @@ import (
 const apiBase = "https://gmail.googleapis.com/gmail/v1/users/me"
 
 type Client struct {
-	hc *http.Client
+	hc           *http.Client
+	slot         chan struct{}
+	paceMu       sync.Mutex
+	nextRequest  time.Time
+	limitedUntil time.Time
+	lastLimit    *apiError
 }
 
 func New(ctx context.Context, ts oauth2.TokenSource) *Client {
 	return &Client{hc: &http.Client{
 		Transport: &oauth2.Transport{Source: ts, Base: httpx.Transport()},
 		Timeout:   90 * time.Second,
-	}}
+	}, slot: make(chan struct{}, 1)}
 }
 
 type apiError struct {
 	status     int
 	msg        string
 	retryAfter time.Duration
+	limited    bool
 }
 
 func (e *apiError) Error() string             { return fmt.Sprintf("gmail: %d %s", e.status, e.msg) }
 func (e *apiError) RetryAfter() time.Duration { return e.retryAfter }
+func (e *apiError) RateLimited() bool         { return e.limited }
 
 func (c *Client) do(ctx context.Context, method, path string, q url.Values, body, out any) error {
 	u := apiBase + path
@@ -72,6 +80,9 @@ func (c *Client) do(ctx context.Context, method, path string, q url.Values, body
 	if body != nil {
 		req.Header.Set("Content-Type", "application/json")
 	}
+	if err := c.waitRequest(ctx, requestCost(method, path, q)); err != nil {
+		return err
+	}
 	resp, err := c.hc.Do(req)
 	if err != nil {
 		return err
@@ -85,12 +96,34 @@ func (c *Client) do(ctx context.Context, method, path string, q url.Values, body
 		var e struct {
 			Error struct {
 				Message string `json:"message"`
+				Errors  []struct {
+					Reason string `json:"reason"`
+				} `json:"errors"`
 			} `json:"error"`
 		}
 		json.Unmarshal(rb, &e)
 		debuglog.API("gmail %s %s -> %d %s", method, path, resp.StatusCode, e.Error.Message)
 		retryAfter, _ := strconv.Atoi(resp.Header.Get("Retry-After"))
-		return &apiError{status: resp.StatusCode, msg: e.Error.Message, retryAfter: time.Duration(retryAfter) * time.Second}
+		limited := resp.StatusCode == http.StatusTooManyRequests
+		if resp.StatusCode == http.StatusForbidden {
+			for _, issue := range e.Error.Errors {
+				limited = limited || issue.Reason == "userRateLimitExceeded" || issue.Reason == "rateLimitExceeded"
+			}
+			limited = limited || (strings.Contains(e.Error.Message, "Quota exceeded") && strings.Contains(e.Error.Message, "Units per minute per user"))
+		}
+		failure := &apiError{status: resp.StatusCode, msg: e.Error.Message, retryAfter: time.Duration(retryAfter) * time.Second, limited: limited}
+		if limited {
+			if failure.retryAfter <= 0 {
+				failure.retryAfter = time.Minute
+			}
+			c.paceMu.Lock()
+			until := time.Now().Add(failure.retryAfter)
+			if until.After(c.limitedUntil) {
+				c.limitedUntil, c.lastLimit = until, failure
+			}
+			c.paceMu.Unlock()
+		}
+		return failure
 	}
 	if out != nil && len(rb) > 0 {
 		return json.Unmarshal(rb, out)
@@ -285,7 +318,11 @@ func (c *Client) threadPage(ctx context.Context, q url.Values, limit int) (provi
 		return provider.Page{}, err
 	}
 
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
 	convs := make([]provider.Conversation, len(list.Threads))
+	var failure error
+	var failureMu sync.Mutex
 	var wg sync.WaitGroup
 	sem := make(chan struct{}, 8)
 	for i, stub := range list.Threads {
@@ -296,6 +333,16 @@ func (c *Client) threadPage(ctx context.Context, q url.Values, limit int) (provi
 			defer func() { <-sem }()
 			conv, err := c.threadMeta(ctx, stub.ID)
 			if err != nil {
+				var apiErr *apiError
+				if (errors.As(err, &apiErr) && apiErr.RateLimited()) || ctx.Err() != nil {
+					failureMu.Lock()
+					if failure == nil {
+						failure = err
+					}
+					failureMu.Unlock()
+					cancel()
+					return
+				}
 				debuglog.API("threadMeta %s: %v", stub.ID, err)
 				conv = provider.Conversation{ID: stub.ID, Subject: "(unavailable)"}
 			}
@@ -304,6 +351,9 @@ func (c *Client) threadPage(ctx context.Context, q url.Values, limit int) (provi
 		}(i, stub)
 	}
 	wg.Wait()
+	if failure != nil {
+		return provider.Page{}, failure
+	}
 	return provider.Page{Conversations: convs, NextCursor: list.NextPageToken}, nil
 }
 
@@ -348,6 +398,25 @@ func (c *Client) threadMeta(ctx context.Context, id string) (provider.Conversati
 
 func (c *Client) GetConversationMeta(ctx context.Context, id string) (provider.Conversation, error) {
 	return c.threadMeta(ctx, id)
+}
+
+func (c *Client) UnreadConversationIDs(ctx context.Context, folderID, cursor string, limit int) ([]string, string, error) {
+	q := url.Values{"labelIds": {folderID}, "q": {"is:unread"}, "maxResults": {strconv.Itoa(limit)}}
+	if cursor != "" {
+		q.Set("pageToken", cursor)
+	}
+	var page struct {
+		Threads       []apiThreadStub `json:"threads"`
+		NextPageToken string          `json:"nextPageToken"`
+	}
+	if err := c.get(ctx, "/threads", q, &page); err != nil {
+		return nil, "", err
+	}
+	ids := make([]string, 0, len(page.Threads))
+	for _, thread := range page.Threads {
+		ids = append(ids, thread.ID)
+	}
+	return ids, page.NextPageToken, nil
 }
 
 func (c *Client) ListConversations(ctx context.Context, folderID, cursor string, limit int, unreadOnly bool) (provider.Page, error) {

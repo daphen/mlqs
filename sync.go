@@ -57,6 +57,8 @@ func (d *daemon) syncOnce(account string, p provider.Provider) {
 		changed = changed[:100]
 	}
 	var wg sync.WaitGroup
+	var failureMu sync.Mutex
+	failed := false
 	sem := make(chan struct{}, 6)
 	for _, id := range changed {
 		wg.Add(1)
@@ -66,6 +68,12 @@ func (d *daemon) syncOnce(account string, p provider.Provider) {
 			defer func() { <-sem }()
 			conv, err := p.GetConversationMeta(ctx, id)
 			if err != nil {
+				if rateLimited(err) || ctx.Err() != nil {
+					failureMu.Lock()
+					failed = true
+					failureMu.Unlock()
+					return
+				}
 				// thread gone (permanent delete) → drop it from any open view
 				d.db.RemoveConversation(account, id)
 				d.broadcast(map[string]any{"type": "convRemoved", "account": account, "id": id})
@@ -88,6 +96,9 @@ func (d *daemon) syncOnce(account string, p provider.Provider) {
 		}(id)
 	}
 	wg.Wait()
+	if failed {
+		return
+	}
 
 	d.db.SetDeltaToken(account, delta.NextToken, time.Now().Unix())
 

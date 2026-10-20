@@ -7,6 +7,9 @@ KeyCap KeyCap.qml
 CapLabel CapLabel.qml
 FeedbackPill FeedbackPill.qml
 Card Card.qml
+ContrastCard ContrastCard.qml
+TabBar TabBar.qml
+TabFace TabFace.qml
 ContrastSurface ContrastSurface.qml
 Dropdown Dropdown.qml
 ScrollFeel ScrollFeel.qml

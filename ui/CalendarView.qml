@@ -8,6 +8,7 @@ Rectangle {
     id: cal
     color: "transparent"
     property bool active: true
+    signal eventDetailsRequested(var event)
 
     function move(d) {
         if (list.count === 0) return
@@ -20,16 +21,11 @@ Rectangle {
         return list.currentIndex >= 0 && list.currentIndex < list.count
             ? Backend.events.get(list.currentIndex) : null
     }
-    // enter: join the meeting when there is one, else open in the browser
+    // Opening an event always stays inside MLQS. Joining remains an explicit
+    // action from the detail modal.
     function open() {
         const ev = current()
-        if (!ev) return
-        const link = ev.meetLink || ev.htmlLink
-        if (link) Qt.openUrlExternally(link)
-    }
-    function openBrowser() {
-        const ev = current()
-        if (ev && ev.htmlLink) Qt.openUrlExternally(ev.htmlLink)
+        if (ev) eventDetailsRequested(ev)
     }
     function rsvp(status) {
         const ev = current()
@@ -136,6 +132,14 @@ Rectangle {
         highlightRangeMode: ListView.ApplyRange
 
         ScrollFeel { flick: list }
+
+        Connections {
+            target: Backend
+            function onCalendarEventTargeted(index) {
+                list.currentIndex = index
+                list.positionViewAtIndex(index, ListView.Center)
+            }
+        }
 
         section.property: "dayKey"
         section.delegate: Item {

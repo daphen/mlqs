@@ -64,10 +64,8 @@ Rectangle {
                     readonly property bool on: Backend.agendaDays === modelData.days
                     height: 26; radius: 13
                     width: spanLbl.implicitWidth + 22
-                    color: on ? Qt.rgba(Theme.fg.r, Theme.fg.g, Theme.fg.b, 0.10)
-                         : spanHov.hovered ? Theme.hover : "transparent"
-                    border.width: 1
-                    border.color: on ? Theme.hairline : "transparent"
+                    color: !on && spanHov.hovered ? Theme.hover : "transparent"
+                    PillSurface { anchors.fill: parent; visible: parent.on }
                     HoverHandler { id: spanHov }
                     Text {
                         id: spanLbl
@@ -89,10 +87,8 @@ Rectangle {
             anchors.verticalCenter: parent.verticalCenter
             height: 26; radius: 13
             width: filterRow.implicitWidth + 22
-            color: Backend.calFilter > 0 ? Qt.rgba(Theme.fg.r, Theme.fg.g, Theme.fg.b, 0.10)
-                 : filterHov.hovered ? Theme.hover : "transparent"
-            border.width: 1
-            border.color: Backend.calFilter > 0 ? Theme.hairline : "transparent"
+            color: Backend.calFilter === 0 && filterHov.hovered ? Theme.hover : "transparent"
+            PillSurface { anchors.fill: parent; visible: Backend.calFilter > 0; hovered: filterHov.hovered }
             HoverHandler { id: filterHov }
             Row {
                 id: filterRow

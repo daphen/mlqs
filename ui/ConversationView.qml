@@ -1169,9 +1169,8 @@ Rectangle {
                             height: 22; radius: 11
                             width: rsvpLbl.implicitWidth + 22
                             anchors.verticalCenter: parent.verticalCenter
-                            color: rsvpHov.hovered ? Qt.rgba(Theme.fg.r, Theme.fg.g, Theme.fg.b, 0.08)
-                                 : Theme.mode === "light" ? Theme.bg : Theme.surface2
-                            border.width: 1; border.color: Theme.hairline
+                            color: "transparent"
+                            PillSurface { anchors.fill: parent; hovered: rsvpHov.hovered }
                             HoverHandler { id: rsvpHov; cursorShape: Qt.PointingHandCursor }
                             Text {
                                 id: rsvpLbl
@@ -1206,7 +1205,8 @@ Rectangle {
                                                             && hintLabel.indexOf(cv.hintBuf) !== 0
                             width: chipInner.implicitWidth + 20; height: 22
                             radius: 11
-                            color: chipHov.hovered ? Theme.surface3 : Theme.surface2
+                            color: "transparent"
+                            PillSurface { anchors.fill: parent; hovered: chipHov.hovered }
                             Row {
                                 id: chipInner
                                 anchors.centerIn: parent

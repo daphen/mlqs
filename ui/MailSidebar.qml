@@ -206,8 +206,8 @@ Rectangle {
             anchors.leftMargin: 6; anchors.rightMargin: 6
             radius: height / 2
             color: allRow.primary ? Theme.itemCursor
-                 : allRow.isOpen ? Theme.itemSelected
-                 : hovA.hovered ? Theme.itemHover : "transparent"
+                 : !allRow.isOpen && hovA.hovered ? Theme.itemHover : "transparent"
+            PillSurface { anchors.fill: parent; visible: allRow.isOpen && !allRow.primary; hovered: hovA.hovered }
         }
         HoverHandler { id: hovA }
         Rectangle {
@@ -279,8 +279,8 @@ Rectangle {
             anchors.leftMargin: 6; anchors.rightMargin: 6
             radius: height / 2
             color: threadsRow.primary ? Theme.itemCursor
-                 : threadsRow.isOpen ? Theme.itemSelected
-                 : hovT.hovered ? Theme.itemHover : "transparent"
+                 : !threadsRow.isOpen && hovT.hovered ? Theme.itemHover : "transparent"
+            PillSurface { anchors.fill: parent; visible: threadsRow.isOpen && !threadsRow.primary; hovered: hovT.hovered }
         }
         HoverHandler { id: hovT }
         Rectangle {
@@ -330,8 +330,8 @@ Rectangle {
             anchors.leftMargin: 6; anchors.rightMargin: 6
             radius: height / 2
             color: calRow.primary ? Theme.itemCursor
-                 : calRow.isOpen ? Theme.itemSelected
-                 : hovC.hovered ? Theme.itemHover : "transparent"
+                 : !calRow.isOpen && hovC.hovered ? Theme.itemHover : "transparent"
+            PillSurface { anchors.fill: parent; visible: calRow.isOpen && !calRow.primary; hovered: hovC.hovered }
         }
         HoverHandler { id: hovC }
         Rectangle {
@@ -436,8 +436,8 @@ Rectangle {
                 anchors.leftMargin: 6; anchors.rightMargin: 6
                 radius: height / 2
                 color: row.primary ? Theme.itemCursor
-                     : row.isOpen ? Theme.itemSelected
-                     : hov.hovered ? Theme.itemHover : "transparent"
+                     : !row.isOpen && hov.hovered ? Theme.itemHover : "transparent"
+                PillSurface { anchors.fill: parent; visible: row.isOpen && !row.primary; hovered: hov.hovered }
             }
             HoverHandler { id: hov }
 

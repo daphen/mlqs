@@ -10,3 +10,5 @@ CheatSheet CheatSheet.qml
 SummaryModal SummaryModal.qml
 SummarizeSetup SummarizeSetup.qml
 RulesModal RulesModal.qml
+singleton Ground Ground.qml
+Sheet Sheet.qml

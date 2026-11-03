@@ -17,7 +17,7 @@ FloatingWindow {
     implicitWidth: 1480
     implicitHeight: 950
     // reference layout: flat canvas, panes float as cards on it
-    color: Theme.bgDim
+    color: Ground.color
 
     component CapGap: Item { width: 8; height: 1 }
 
@@ -110,7 +110,7 @@ FloatingWindow {
     // picker-style scrim: dim the app while composing
     Rectangle {
         anchors.fill: parent
-        color: Theme.ink; opacity: (composer.visible || eventComposer.visible) ? 0.5 : 0
+        color: Qt.alpha(Ground.color, 0.72); opacity: (composer.visible || eventComposer.visible) ? 1 : 0
         visible: opacity > 0
         Behavior on opacity { NumberAnimation { duration: 140 } }
     }
@@ -228,14 +228,11 @@ FloatingWindow {
         Behavior on opacity { NumberAnimation { duration: 140 } }
         Row {
             id: sbRow; anchors.centerIn: parent; spacing: 8
-            Rectangle {
-                width: 8; height: 8; radius: 4; color: Theme.cursor
+            ThinkingOrb {
+                width: 18; height: 18
                 anchors.verticalCenter: parent.verticalCenter
-                SequentialAnimation on opacity {
-                    running: Backend.summaryLoading; loops: Animation.Infinite
-                    NumberAnimation { from: 1; to: 0.25; duration: 550 }
-                    NumberAnimation { from: 0.25; to: 1; duration: 550 }
-                }
+                running: Backend.summaryLoading
+                glow: Theme.cursor; activityColors: [Theme.cursor]; invertRing: true
             }
             Text {
                 anchors.verticalCenter: parent.verticalCenter
@@ -249,8 +246,7 @@ FloatingWindow {
     Rectangle {
         id: statusbar
         anchors { left: parent.left; right: parent.right; bottom: parent.bottom }
-        height: 36; color: Theme.surface0
-        Rectangle { anchors.top: parent.top; width: parent.width; height: 1; color: Theme.hairline }
+        height: 36; color: Ground.color
         readonly property bool inConv: Backend.openConvId !== ""
 
         Row {

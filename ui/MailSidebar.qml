@@ -13,7 +13,7 @@ Rectangle {
     signal accountMenuRequested()
     property alias accountAnchor: acctTrigger
     // sits directly on the outer ground — no divider
-    color: Theme.bgDim
+    color: Ground.color
     property bool active: false
     property int sel: 0
     opacity: active ? 1.0 : 0.8

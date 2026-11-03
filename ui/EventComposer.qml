@@ -12,9 +12,8 @@ Rectangle {
     width: Math.min(parent.width - 120, 560)
     height: 434
     radius: Theme.radiusCard
-    color: Theme.bg_alt
-    border.width: 1
-    border.color: Qt.rgba(Theme.fg.r, Theme.fg.g, Theme.fg.b, Theme.mode === "light" ? 0.15 : 0.10)
+    color: "transparent"
+    Sheet { anchors.fill: parent; radius: comp.radius; z: -1 }
 
     property int sel: 0   // title · date · start · duration · attendees · location
     readonly property var fields: [titleField, dateField, startField, durField, attField, locField]
@@ -138,13 +137,12 @@ Rectangle {
         property int idx: 0
         property string hint: ""
         width: parent.width; height: 34
-        radius: Theme.radiusSm
-        color: Theme.mode === "light" ? Theme.bg : Theme.surface2
-        border.width: 1
-        border.color: input.activeFocus ? (Theme.mode === "light" ? Theme.fg : "#FFFFFF")
-                    : (comp.sel === idx && !comp.editing) ? Theme.fg_muted : Theme.hairline
+        radius: height / 2
+        color: Qt.alpha(Theme.fg, Theme.mode === "light" ? 0.035 : 0.03)
+        border.width: input.activeFocus ? 1.5 : (comp.sel === idx && !comp.editing) ? 1 : 0
+        border.color: input.activeFocus ? Qt.alpha(Theme.mode === "light" ? "#242424" : "#FAFAFA", 0.6) : Theme.fg_muted
         Row {
-            anchors.fill: parent; anchors.leftMargin: 10
+            anchors.fill: parent; anchors.leftMargin: 14
             spacing: 8
             Text {
                 text: label; color: Theme.fg_muted
@@ -189,12 +187,12 @@ Rectangle {
         // target calendar: ↵/i cycles (not a text field)
         Rectangle {
             width: parent.width; height: 34
-            radius: Theme.radiusSm
-            color: Theme.mode === "light" ? Theme.bg : Theme.surface2
-            border.width: 1
-            border.color: (comp.sel === 6 && !comp.editing) ? Theme.fg_muted : Theme.hairline
+            radius: height / 2
+            color: Qt.alpha(Theme.fg, Theme.mode === "light" ? 0.035 : 0.03)
+            border.width: (comp.sel === 6 && !comp.editing) ? 1 : 0
+            border.color: Theme.fg_muted
             Row {
-                anchors.fill: parent; anchors.leftMargin: 10
+                anchors.fill: parent; anchors.leftMargin: 14
                 spacing: 8
                 Text {
                     text: "Calendar"; color: Theme.fg_muted
@@ -310,9 +308,7 @@ Rectangle {
 
     Rectangle {
         anchors { left: parent.left; right: parent.right; bottom: parent.bottom }
-        height: 34; color: Theme.surface0
-        radius: Theme.radius
-        Rectangle { anchors.top: parent.top; width: parent.width; height: 1; color: Theme.hairline }
+        height: 34; color: "transparent"
         Row {
             anchors.right: parent.right; anchors.rightMargin: 14
             anchors.verticalCenter: parent.verticalCenter

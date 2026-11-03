@@ -86,9 +86,9 @@ Rectangle {
             anchors.horizontalCenter: parent.horizontalCenter
             anchors.verticalCenter: parent.verticalCenter
             width: 320; height: 36; radius: 18
-            color: Theme.mode === "light" ? Theme.bg : Theme.surface2
-            border.width: 1
-            border.color: sInput.activeFocus ? Theme.fg_muted : Theme.hairlineSoft
+            color: Qt.alpha(Theme.fg, Theme.mode === "light" ? 0.035 : 0.03)
+            border.width: sInput.activeFocus ? 1.5 : 0
+            border.color: Qt.alpha(Theme.mode === "light" ? "#242424" : "#FAFAFA", 0.6)
             Icon {
                 anchors.left: parent.left; anchors.leftMargin: 12
                 anchors.verticalCenter: parent.verticalCenter

@@ -1089,14 +1089,11 @@ Rectangle {
                         visible: modelData.sending === true
                         spacing: 5
                         anchors.verticalCenter: parent.verticalCenter
-                        Rectangle {
-                            width: 7; height: 7; radius: 4; color: Theme.cursor
+                        ThinkingOrb {
+                            width: 12; height: 12
                             anchors.verticalCenter: parent.verticalCenter
-                            SequentialAnimation on opacity {
-                                running: modelData.sending === true; loops: Animation.Infinite
-                                NumberAnimation { from: 1; to: 0.25; duration: 550 }
-                                NumberAnimation { from: 0.25; to: 1; duration: 550 }
-                            }
+                            running: modelData.sending === true
+                            glow: Theme.cursor; activityColors: [Theme.cursor]
                         }
                         Text {
                             text: "sending…"
@@ -1824,19 +1821,16 @@ Rectangle {
                       // (card radius 24 − inset 14 = the input's radius)
                       leftMargin: 14; rightMargin: 14; bottomMargin: 14 }
             height: Math.min(180, replyInput.implicitHeight + 22)
-            radius: Theme.radius
+            radius: Math.min(height / 2, 24)
             readonly property bool focused: replyInput.activeFocus
-            color: Theme.bg
-            border.color: focused
-                ? (Theme.mode === "light" ? Theme.ink : Qt.hsla(0.583, 0.29, 0.90, 1))
-                : Theme.hairline
-            border.width: 2
-            Behavior on border.color { ColorAnimation { duration: 650; easing.type: Easing.InOutQuad } }
+            color: Qt.alpha(Theme.fg, Theme.mode === "light" ? 0.035 : 0.03)
+            border.color: Qt.alpha(Theme.mode === "light" ? "#242424" : "#FAFAFA", 0.6)
+            border.width: focused ? 1.5 : 0
 
             Flickable {
                 id: replyFlick
                 anchors.fill: parent
-                anchors { leftMargin: 12; rightMargin: 12; topMargin: 10; bottomMargin: 10 }
+                anchors { leftMargin: 18; rightMargin: 18; topMargin: 10; bottomMargin: 10 }
                 contentHeight: replyInput.implicitHeight; clip: true
                 function ensureVisible(r) {
                     if (contentY >= r.y) contentY = r.y

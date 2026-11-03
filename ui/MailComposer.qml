@@ -13,9 +13,8 @@ Rectangle {
     width: Math.min(parent.width - 120, 760)
     height: Math.min(parent.height - 100, 640)
     radius: Theme.radiusCard
-    color: Theme.bg_alt
-    border.width: 1
-    border.color: Qt.rgba(Theme.fg.r, Theme.fg.g, Theme.fg.b, Theme.mode === "light" ? 0.15 : 0.10)
+    color: "transparent"
+    Sheet { anchors.fill: parent; radius: comp.radius; z: -1 }
 
     property int sel: 0   // 0 to · 1 cc · 2 subject · 3 body
     // The sending identity, shown in the From row and cycled with ⌃f. Always set
@@ -213,13 +212,12 @@ Rectangle {
         property string label: ""
         property int idx: 0
         width: parent.width; height: 34
-        radius: Theme.radiusSm
-        color: Theme.mode === "light" ? Theme.bg : Theme.surface2
-        border.width: 1
-        border.color: input.activeFocus ? (Theme.mode === "light" ? Theme.fg : "#FFFFFF")
-                    : (comp.sel === idx && !comp.editing) ? Theme.fg_muted : Theme.hairline
+        radius: height / 2
+        color: Qt.alpha(Theme.fg, Theme.mode === "light" ? 0.035 : 0.03)
+        border.width: input.activeFocus ? 1.5 : (comp.sel === idx && !comp.editing) ? 1 : 0
+        border.color: input.activeFocus ? Qt.alpha(Theme.mode === "light" ? "#242424" : "#FAFAFA", 0.6) : Theme.fg_muted
         Row {
-            anchors.fill: parent; anchors.leftMargin: 10
+            anchors.fill: parent; anchors.leftMargin: 14
             spacing: 8
             Text {
                 text: label; color: Theme.fg_muted
@@ -265,11 +263,10 @@ Rectangle {
         // j/k cycle — it changes rarely); ⌃f cycles it when there's more than one.
         Rectangle {
             width: parent.width; height: 34
-            radius: Theme.radiusSm
-            color: Theme.mode === "light" ? Theme.bg : Theme.surface2
-            border.width: 1; border.color: Theme.hairline
+            radius: height / 2
+            color: Qt.alpha(Theme.fg, Theme.mode === "light" ? 0.035 : 0.03)
             Row {
-                anchors.fill: parent; anchors.leftMargin: 10; anchors.rightMargin: 10
+                anchors.fill: parent; anchors.leftMargin: 14; anchors.rightMargin: 14
                 spacing: 8
                 Text {
                     text: "From"; color: Theme.fg_muted
@@ -301,14 +298,13 @@ Rectangle {
         Rectangle {
             width: parent.width
             height: parent.height - y - (attachRow.visible ? 34 : 0) - 34
-            radius: Theme.radiusSm
-            color: Theme.mode === "light" ? Theme.bg : Theme.surface1
-            border.width: 1
-            border.color: bodyArea.activeFocus ? (Theme.mode === "light" ? Theme.fg : "#FFFFFF")
-                        : (comp.sel === 3 && !comp.editing) ? Theme.fg_muted : Theme.hairline
+            radius: 17
+            color: Qt.alpha(Theme.fg, Theme.mode === "light" ? 0.035 : 0.03)
+            border.width: bodyArea.activeFocus ? 1.5 : (comp.sel === 3 && !comp.editing) ? 1 : 0
+            border.color: bodyArea.activeFocus ? Qt.alpha(Theme.mode === "light" ? "#242424" : "#FAFAFA", 0.6) : Theme.fg_muted
             Flickable {
                 id: bodyFlick
-                anchors.fill: parent; anchors.margins: 10
+                anchors.fill: parent; anchors.margins: 14
                 contentHeight: bodyArea.implicitHeight; clip: true
                 function ensureVisible(r) {
                     if (contentY >= r.y) contentY = r.y
@@ -417,9 +413,7 @@ Rectangle {
     // picker chin: same band + keycap grammar as every other picker
     Rectangle {
         anchors { left: parent.left; right: parent.right; bottom: parent.bottom }
-        height: 34; color: Theme.surface0
-        radius: Theme.radius
-        Rectangle { anchors.top: parent.top; width: parent.width; height: 1; color: Theme.hairline }
+        height: 34; color: "transparent"
         Row {
             anchors.right: parent.right; anchors.rightMargin: 14
             anchors.verticalCenter: parent.verticalCenter

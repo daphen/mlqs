@@ -152,22 +152,16 @@ Rectangle {
         }
     }
 
-    Card {
+    TabBar {
         id: card
+        objectName: "mailListSurface"
         anchors { top: header.bottom; left: parent.left; right: parent.right; bottom: parent.bottom
                   topMargin: 6; leftMargin: 8; rightMargin: 14; bottomMargin: 14 }
-        // concentric with the row pills: pill radius (58/2 = 29) + 14px inset
-        radius: 43
-        color: Theme.surface0
-        border.width: 1
-        border.color: Theme.hairlineSoft
     }
 
     ListView {
         id: list
-        // 11 + the pill's own 3px margin = 14, matching the side inset so the
-        // card corner stays concentric with the pills on both axes
-        anchors { fill: card; topMargin: 11; bottomMargin: 11 }
+        anchors { fill: card; topMargin: card.padding - 3; bottomMargin: card.padding - 3 }
         model: Backend.convs
         clip: true
         boundsBehavior: Flickable.StopAtBounds
@@ -200,22 +194,19 @@ Rectangle {
             readonly property bool cursor: index === list.currentIndex
             readonly property bool sel: idx.inSel(index)
 
-            // reference-style pill rows in our tokens: unread pops as a raised
-            // card, read rests on the surface, and selection carries the accent
-            Rectangle {
+            TabFace {
+                id: rowFace
+                objectName: "mailRowFace"
                 anchors.fill: parent
-                anchors.leftMargin: idx.active ? 42 : 14
-                anchors.rightMargin: 14
+                anchors.leftMargin: idx.active ? 42 : card.padding
+                anchors.rightMargin: card.padding
                 anchors.topMargin: 3; anchors.bottomMargin: 3
-                radius: height / 2
-                color: row.sel ? Theme.surface3
-                     : row.cursor && idx.active ? Theme.itemCursor
-                     : row.unread ? Theme.surface : Theme.surface0
-                border.width: row.unread ? 1 : 0
-                border.color: Theme.hairlineSoft
-                Behavior on color { ColorAnimation { duration: 120; easing.type: Easing.InOutQuad } }
-                Behavior on border.color { ColorAnimation { duration: 120; easing.type: Easing.InOutQuad } }
+                base: card.face
+                selected: row.sel
+                cursor: row.cursor && idx.active
+                hovered: rowHover.hovered
             }
+            HoverHandler { id: rowHover; cursorShape: Qt.PointingHandCursor }
 
             // gutter: rel numbers stay put in visual mode — the range is readable as counts
             Item {
@@ -240,28 +231,39 @@ Rectangle {
                 }
             }
 
-            // always-on checkbox (reference-style); fills on visual-mode selection
-            Rectangle {
-                anchors.left: parent.left; anchors.leftMargin: idx.active ? 56 : 28
+            Item {
+                id: rowState
+                objectName: "mailRowStatus"
+                anchors.left: rowFace.left; anchors.leftMargin: 10
                 anchors.verticalCenter: parent.verticalCenter
-                width: 18; height: 18; radius: 6
-                // solid card-white fill so the box reads on tinted pills too
-                color: row.sel ? Theme.surface3 : Theme.bg
-                border.width: 1
-                border.color: row.sel ? Theme.hairline : Qt.rgba(Theme.fg.r, Theme.fg.g, Theme.fg.b, 0.25)
-                Icon {
-                    visible: row.sel
+                width: 20; height: 20
+                Rectangle {
+                    objectName: "mailUnreadDot"
                     anchors.centerIn: parent
-                    width: 11; height: 11
-                    name: "check"
-                    color: Theme.fg
+                    visible: !row.sel
+                    width: 8; height: 8; radius: 4
+                    color: row.unread ? Theme.fg : Theme.fg_muted
+                    opacity: row.unread ? 1 : 0.45
+                }
+                Rectangle {
+                    objectName: "mailSelectionBox"
+                    anchors.centerIn: parent
+                    visible: row.sel
+                    width: 18; height: 18; radius: 6
+                    color: Theme.surface3
+                    border.width: 1; border.color: Theme.hairline
+                    Icon {
+                        anchors.centerIn: parent
+                        width: 11; height: 11
+                        name: "check"; color: Theme.fg
+                    }
                 }
             }
             // flag only when it says something — starred, cursor, or in the visual range
             Icon {
                 id: star
                 visible: row.starred || row.sel || (row.cursor && idx.active)
-                anchors.left: parent.left; anchors.leftMargin: idx.active ? 86 : 58
+                anchors.right: whoText.right
                 anchors.verticalCenter: parent.verticalCenter
                 width: 14; height: 14
                 name: "flag-7"
@@ -271,9 +273,11 @@ Rectangle {
 
             Text {
                 id: whoText
-                anchors.left: parent.left; anchors.leftMargin: idx.active ? 112 : 84
+                objectName: "mailSender"
+                anchors.left: rowState.right; anchors.leftMargin: 6
                 anchors.verticalCenter: parent.verticalCenter
                 width: 210
+                rightPadding: star.visible ? 20 : 0
                 text: row.who
                 color: row.unread ? Theme.fg : Theme.fg_secondary
                 font.family: Theme.fontFamily

@@ -19,7 +19,7 @@ Singleton {
         "light": {
             "bg":          "#FFFFFF",
             "bg_dim":      "#F5F5F7",
-            "canvas":      "#ECEFF1",
+            "canvas":      "#F6F7F4",
             "bg_alt":      "#F6F7F4",
             "selection":   "#F4F5F2",
             "surface":     "#F7F7F7",
@@ -27,8 +27,8 @@ Singleton {
             "surface1":    "#F7F7F7",
             "surface2":    "#EDEDED",
             "surface3":    "#E3E3E7",
-            "itemHover":    "#EDEDED",
-            "itemSelected": "#F4F5F2",
+            "itemHover":    "#F4F4F6",
+            "itemSelected": "#F0F0F3",
             "itemCursor":   "#E3E3E7",
             "overlay":     "#E9EAE7",
             "prompt":      "#EEEFEC",
@@ -41,6 +41,15 @@ Singleton {
             "green":       "#587969",
             "sky":         "#0284C7",
             "electric":    "#0000f2",
+            "syntaxKeyword": "#396171",
+            "syntaxString": "#396171",
+            "syntaxComment": "#959693",
+            "syntaxNumber": "#7c3438",
+            "syntaxBoolean": "#2a618d",
+            "syntaxType": "#2a618d",
+            "syntaxFunction": "#e16511",
+            "diffAddedBg": "#DDF4FF",
+            "diffRemovedBg": "#FFF1E5",
             "cursor":      "#FF570D",
             "ink":         "#1C1C1C",
             "warning":     "#F5DECE",
@@ -73,6 +82,15 @@ Singleton {
             "green":       "#97B5A6",
             "sky":         "#7DD3FC",
             "electric":    "#5566ff",
+            "syntaxKeyword": "#97B5A6",
+            "syntaxString": "#CCD5E4",
+            "syntaxComment": "#707B84",
+            "syntaxNumber": "#FF7B72",
+            "syntaxBoolean": "#8A92A7",
+            "syntaxType": "#8A9AA6",
+            "syntaxFunction": "#CCD5E4",
+            "diffAddedBg": "#2B3D30",
+            "diffRemovedBg": "#3A2F25",
             "cursor":      "#FF570D",
             "ink":         "#1B1B1B",
             "warning":     "#462415",
@@ -107,6 +125,16 @@ Singleton {
     readonly property color green:        palettes[mode].green
     readonly property color sky:          palettes[mode].sky
     readonly property color electric:     palettes[mode].electric
+    // Syntax and diff roles, matching the Neovim theme's Keyword/String/Comment/… and Added/Removed groups.
+    readonly property color syntaxKeyword:  palettes[mode].syntaxKeyword
+    readonly property color syntaxString:   palettes[mode].syntaxString
+    readonly property color syntaxComment:  palettes[mode].syntaxComment
+    readonly property color syntaxNumber:   palettes[mode].syntaxNumber
+    readonly property color syntaxBoolean:  palettes[mode].syntaxBoolean
+    readonly property color syntaxType:     palettes[mode].syntaxType
+    readonly property color syntaxFunction: palettes[mode].syntaxFunction
+    readonly property color diffAddedBg:    palettes[mode].diffAddedBg
+    readonly property color diffRemovedBg:  palettes[mode].diffRemovedBg
     readonly property color cursor:       palettes[mode].cursor
     // Exposed existing palette colors (no new colors.json entries): near-black for
     // text on bright accents/badges + the modal scrim, the warning bg + yellow for
@@ -136,7 +164,7 @@ Singleton {
     readonly property int radiusInner: radiusCard - insetCard
     readonly property int padding:   12
     readonly property int paddingSm: 6
-    readonly property int fontSize:  Quickshell.env("COCKPIT_DECK") === "1" ? 12 : 14
+    readonly property int fontSize:  Quickshell.env("COCKPIT_DECK") === "1" ? 11 : 14
     function resolveFontFamily(preferred) {
         const available = Qt.fontFamilies()
         const candidates = [preferred, "GeistMono Nerd Font", "DejaVu Sans Mono", "Noto Sans Mono", "Liberation Mono"]

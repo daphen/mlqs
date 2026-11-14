@@ -371,6 +371,7 @@ Rectangle {
 
     ListView {
         id: list
+        ScrollFeel { flick: list }
         anchors { top: calRow.bottom; topMargin: 2; left: parent.left; right: parent.right; bottom: parent.bottom }
         model: bar.visibleFolders
         clip: true

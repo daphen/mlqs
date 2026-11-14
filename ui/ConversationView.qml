@@ -1829,6 +1829,7 @@ Rectangle {
 
             Flickable {
                 id: replyFlick
+                ScrollFeel { flick: replyFlick }
                 anchors.fill: parent
                 anchors { leftMargin: 18; rightMargin: 18; topMargin: 10; bottomMargin: 10 }
                 contentHeight: replyInput.implicitHeight; clip: true

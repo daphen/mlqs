@@ -304,6 +304,7 @@ Rectangle {
             border.color: bodyArea.activeFocus ? Qt.alpha(Theme.mode === "light" ? "#242424" : "#FAFAFA", 0.6) : Theme.fg_muted
             Flickable {
                 id: bodyFlick
+                ScrollFeel { flick: bodyFlick }
                 anchors.fill: parent; anchors.margins: 14
                 contentHeight: bodyArea.implicitHeight; clip: true
                 function ensureVisible(r) {
